@@ -3,38 +3,1417 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Le Augem Cafe | POS & Inventory</title>
+  <title>Le Augem Cafe | POS & Management Portal</title>
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="item-images.css">
+  <!-- Use standard defer script to prevent CORS blocks on file:/// protocol -->
   <script src="app.js" defer></script>
 </head>
 <body>
+  <!-- Header with Bricks & Wood Aesthetic -->
   <header class="site-header">
-    <a class="brand" href="#overview" data-go="overview">Le Augem Cafe</a>
-    <nav class="main-nav" aria-label="Main navigation">
-      <button class="nav-link active" data-view="overview">Home</button>
-      <button class="nav-link" data-view="pos">POS</button>
-      <button class="nav-link" data-view="items">Items</button>
-      <button class="nav-link" data-view="inventory">Inventory</button>
-      <button class="nav-link" data-view="orders">Orders</button>
+    <div class="brand-container">
+      <button class="brand-button" id="brand-home-btn" data-mode="portal">
+        <span class="brand-icon">☕</span>
+        <span class="brand-text">Le Augem Cafe</span>
+        <span class="brand-tag">Bricks &amp; Wood</span>
+      </button>
+    </div>
+
+    <!-- Mode Specific Navigations -->
+    <!-- 1. Portal Mode Nav (Showcase: Clean header on portal; navigation begins on role selection) -->
+    <nav class="main-nav" id="nav-portal" aria-label="Portal navigation" hidden></nav>
+
+    <!-- 2. Barista POS Mode Nav (USER Role) -->
+    <nav class="main-nav" id="nav-pos" aria-label="Barista navigation" hidden>
+      <button class="nav-link active" data-view="pos">POS Terminal</button>
+      <button class="nav-link" data-view="orders">Orders &amp; Voids</button>
+      <button class="nav-link" data-view="shift">Shift &amp; Cash Drawer</button>
+      <button class="nav-link nav-switch" data-switch-mode="portal">⎋ Exit to Portal</button>
     </nav>
+
+    <!-- 3. Management Mode Nav (MANAGEMENT Role) -->
+    <nav class="main-nav" id="nav-mgmt" aria-label="Management navigation" hidden>
+      <button class="nav-link active" data-view="analytics">Visual Dashboard</button>
+      <button class="nav-link" data-view="report">Executive Report</button>
+      <button class="nav-link" data-view="finance">Finance &amp; OpEx</button>
+      <button class="nav-link" data-view="inventory">Inventory &amp; COGS</button>
+      <button class="nav-link" data-view="items">Menu &amp; Recipes</button>
+      <button class="nav-link" data-view="orders">All Orders</button>
+      <button class="nav-link nav-switch" data-switch-mode="portal">⎋ Exit to Portal</button>
+    </nav>
+
+    <div class="header-status">
+      <span class="mode-badge" id="header-mode-badge">Portal Home</span>
+    </div>
   </header>
+
   <main class="main-content">
-    <section id="overview-view" class="view active-view">
-      <div class="page-heading"><div><h1>Le Augem Cafe</h1><p>Point of sale and inventory</p></div><button class="button button-dark" data-go="pos">New order</button></div>
-      <section class="panel home-panel"><h2>Get started</h2><div class="home-actions"><button class="home-action" data-go="pos"><strong>POS</strong><span>Create a sale and take payment →</span></button><button class="home-action" data-go="inventory"><strong>Inventory</strong><span>View and update stock levels →</span></button><button class="home-action" data-go="orders"><strong>Orders</strong><span>Review today’s orders →</span></button></div></section>
-      <section class="panel recent-panel"><div class="panel-header"><h2>Recent orders</h2><button class="text-link" data-go="orders">View all orders →</button></div><div class="table-scroll"><table><thead><tr><th>ORDER</th><th>TIME</th><th>ITEMS</th><th>SERVICE</th><th>TOTAL</th></tr></thead><tbody id="recent-orders"></tbody></table></div></section>
+    <!-- ========================================================
+         0. LANDING PORTAL (SEPARATES POS & MANAGEMENT)
+         ======================================================== -->
+    <section id="portal-view" class="view active-view">
+      <div class="portal-hero">
+        <div class="portal-badge">Bricks &amp; Wood Edition</div>
+        <h1>Le Augem Café Portal</h1>
+        <p>Golden Brew. Precious Memories. Select your working environment below.</p>
+      </div>
+
+      <!-- Real-time Quick Pulse Banner -->
+      <div class="metrics-grid portal-metrics">
+        <div class="metric-card">
+          <span class="metric-label">Today's Total Sales</span>
+          <strong class="metric-value" id="portal-gross-sales">₱0.00</strong>
+          <small class="metric-sub" id="portal-order-count">0 orders</small>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">Total Footfall / Orders</span>
+          <strong class="metric-value" id="portal-footfall">0</strong>
+          <small class="metric-sub">Customers served today</small>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">Avg Ticket / Person</span>
+          <strong class="metric-value" id="portal-aov">₱0.00</strong>
+          <small class="metric-sub">Average Order Value</small>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">Estimated Net Margin</span>
+          <strong class="metric-value text-accent" id="portal-net-profit">₱0.00</strong>
+          <small class="metric-sub">Net revenue after COGS &amp; OpEx</small>
+        </div>
+      </div>
+
+      <!-- Two Primary Working Domains -->
+      <div class="portal-cards-grid">
+        <!-- DOMAIN 1: BARISTA POS -->
+        <div class="portal-choice-card pos-choice">
+          <div class="portal-card-header">
+            <span class="portal-icon">☕</span>
+            <div>
+              <h2>Barista POS System</h2>
+              <span class="card-subtitle">Front-of-House Terminal</span>
+            </div>
+          </div>
+          <p class="portal-card-copy">
+            Touch-optimized interface built for line-busting speed. Create orders from the 38-item official menu, configure milk upgrades (oat milk +₱40), chia seeds (+₱20), and roast profiles (Harmonie vs Puissant), handle GCash/Maya reference logging, hold &amp; resume tickets, and print cup stickers.
+          </p>
+          <ul class="portal-feature-list">
+            <li>✓ Touch-friendly menu with Hot (8 oz) &amp; Iced (16 oz) options</li>
+            <li>✓ Senior Citizen &amp; PWD statutory discounts (20% + VAT Exempt)</li>
+            <li>✓ GCash, Maya, Cash &amp; Card cashless transaction audit</li>
+            <li>✓ Hold &amp; resume pending customer orders</li>
+            <li>✓ Cash drawer balancing &amp; float reconciliation</li>
+          </ul>
+          <button class="portal-action-btn button-dark" data-switch-mode="pos">
+            <span>Enter Barista POS</span>
+            <span>→</span>
+          </button>
+        </div>
+
+        <!-- DOMAIN 2: MANAGEMENT & REPORTING -->
+        <div class="portal-choice-card mgmt-choice">
+          <div class="portal-card-header">
+            <span class="portal-icon">📊</span>
+            <div>
+              <h2>Management &amp; Analytics</h2>
+              <span class="card-subtitle">Back-of-House &amp; Executive Suite</span>
+            </div>
+          </div>
+          <p class="portal-card-copy">
+            Comprehensive business intelligence and back-office oversight. Inspect interactive visual dashboards, review product sales breakdowns, track per-gram ingredient COGS and recipe deductions, manage OpEx operational expenses, and generate printable executive reports.
+          </p>
+          <ul class="portal-feature-list">
+            <li>✓ Visual Analytics: Hourly sales curve, category distribution &amp; size share</li>
+            <li>✓ Printable Executive Sales &amp; Financial Report format</li>
+            <li>✓ Ingredient-level recipe mapping &amp; moving-average costing</li>
+            <li>✓ Cash Flow statement (Inflows vs Outflows) &amp; OpEx tracking</li>
+            <li>✓ Order cancellation audit ("Balik-Inventory" vs "Waste / Lugi")</li>
+          </ul>
+          <button class="portal-action-btn button-light" data-switch-mode="mgmt">
+            <span>Enter Management Portal</span>
+            <span>→</span>
+          </button>
+        </div>
+      </div>
     </section>
-    <section id="pos-view" class="view"><div class="page-heading compact-heading"><div><h1>Point of sale</h1><p>Select items to create an order.</p></div><div class="service-toggle"><button class="service-option selected" data-service="Dine in">Dine in</button><button class="service-option" data-service="Takeaway">Takeaway</button></div></div><div class="pos-layout"><div class="menu-area"><div class="pos-toolbar"><div class="search-box"><input id="menu-search" type="search" placeholder="Search menu..." aria-label="Search menu"></div><div class="category-tabs" id="category-tabs"></div></div><div class="product-grid" id="product-grid"></div></div><aside class="cart-panel"><div class="cart-head"><h2>Current order <span class="cart-count" id="cart-count">0</span></h2><button class="clear-cart" id="clear-cart">Clear</button></div><div class="cart-meta"><span id="service-label">Dine in</span><span>·</span><span id="order-number">New order</span></div><div class="cart-items" id="cart-items"></div><div class="cart-bottom"><div class="subtotal-row"><span>Subtotal</span><span id="subtotal">₱0.00</span></div><div class="subtotal-row"><span>VAT <small>(12%, included)</small></span><span id="tax">₱0.00</span></div><div class="total-row"><span>Total</span><strong id="cart-total">₱0.00</strong></div><button class="checkout-button" id="checkout-button" disabled>Take payment <span>→</span></button></div></aside></div></section>
-    <section id="items-view" class="view"><div class="page-heading compact-heading"><div><h1>Items</h1><p>Create and organize the POS menu.</p></div><button class="button button-dark" id="add-menu-item">＋ Add item</button></div><section class="panel items-panel"><div class="inventory-toolbar items-toolbar"><div class="search-box"><input id="items-search" type="search" placeholder="Search menu items..." aria-label="Search menu items"></div><div class="group-controls"><div class="group-filter"><span class="group-control-label">FILTER ITEMS</span><div class="category-tabs" id="item-groups" aria-label="Filter items by group"></div></div><div class="group-management"><span class="group-control-label">MANAGE GROUPS</span><div class="group-action-buttons"><button class="group-action" id="add-menu-group"><span aria-hidden="true">＋</span> Create</button><button class="group-action" id="edit-menu-groups"><span aria-hidden="true">✎</span> Edit</button></div></div></div></div><div class="table-scroll"><table><thead><tr><th>ITEM</th><th>GROUP</th><th>PRICE</th><th></th></tr></thead><tbody id="items-rows"></tbody></table></div></section></section>
-    <section id="inventory-view" class="view"><div class="page-heading compact-heading"><div><h1>Inventory</h1><p>Set each ingredient’s stock level.</p></div><button class="button button-dark" id="add-item-button">＋ Add item</button></div><section class="panel inventory-panel"><div class="inventory-toolbar"><div class="search-box"><input id="inventory-search" type="search" placeholder="Search inventory..." aria-label="Search inventory"></div></div><div class="table-scroll"><table><thead><tr><th>ITEM</th><th>CATEGORY</th><th>UNIT COST</th><th>STOCK LEVEL</th></tr></thead><tbody id="inventory-rows"></tbody></table></div></section></section>
-    <section id="orders-view" class="view"><div class="page-heading compact-heading"><div><h1>Orders</h1><p>Search and review orders.</p></div><button class="button button-light" id="export-orders">Export CSV</button></div><section class="panel orders-panel"><div class="orders-toolbar"><div class="search-box"><input id="order-search" type="search" placeholder="Search orders..." aria-label="Search orders"></div></div><div class="table-scroll"><table><thead><tr><th>ORDER</th><th>TIME</th><th>ITEMS</th><th>SERVICE</th><th>TOTAL</th><th>CUSTOMER</th></tr></thead><tbody id="order-rows"></tbody></table></div></section></section>
+
+    <!-- ========================================================
+         1. BARISTA POS VIEW (FRONT-OF-HOUSE)
+         ======================================================== -->
+    <section id="pos-view" class="view">
+      <!-- Pending Tickets Bar -->
+      <div class="pending-tickets-bar">
+        <div class="pending-info">
+          <span>Active Pending Tickets: <strong id="pending-tickets-count">0</strong></span>
+        </div>
+        <div class="pending-actions">
+          <button class="button button-light" id="hold-ticket-btn" title="Save current cart as a held ticket">Hold Ticket ⏸</button>
+          <button class="button button-dark" id="view-pending-btn">Resume Tickets (<span id="resume-count">0</span>)</button>
+        </div>
+      </div>
+
+      <div class="page-heading compact-heading">
+        <div>
+          <h1>Barista Point of Sale</h1>
+          <p>Official Le Augem Menu · Tap items to add to order</p>
+        </div>
+        <div class="service-toggle">
+          <button class="service-option selected" data-service="Dine in">Dine in</button>
+          <button class="service-option" data-service="Takeaway">Takeaway</button>
+        </div>
+      </div>
+
+      <div class="pos-layout">
+        <!-- Left: Product Catalog -->
+        <div class="menu-area">
+          <div class="pos-toolbar">
+            <div class="search-box">
+              <input id="menu-search" type="search" placeholder="Search drinks, food, pastries..." aria-label="Search menu">
+            </div>
+            <!-- Main Category Tabs -->
+            <div class="category-tabs" id="category-tabs"></div>
+            <!-- Subcategory / Variant Filter (Dynamically shown ONLY when >= 2 variants exist) -->
+            <div class="subcategory-tabs" id="subcategory-tabs" hidden></div>
+          </div>
+          <div class="product-grid" id="product-grid"></div>
+        </div>
+
+        <!-- Right: Cart & Order Breakdown -->
+        <aside class="cart-panel">
+          <div class="cart-head">
+            <h2>Current Ticket <span class="cart-count" id="cart-count">0</span></h2>
+            <button class="clear-cart" id="clear-cart" title="Discard current cart">Clear</button>
+          </div>
+
+          <div class="cart-meta">
+            <span id="service-label">Dine in</span>
+            <span>·</span>
+            <span id="order-number">New Ticket</span>
+          </div>
+
+          <!-- Loyalty Customer Lookup Banner -->
+          <div class="loyalty-box">
+            <div class="loyalty-header">
+              <span>Customer Loyalty</span>
+              <button class="text-link" id="btn-loyalty-lookup">Search / Add</button>
+            </div>
+            <div id="loyalty-active-customer" class="loyalty-active-customer">
+              <em>No customer attached (Guest)</em>
+            </div>
+          </div>
+
+          <!-- Cart Item List -->
+          <div class="cart-items" id="cart-items"></div>
+
+          <!-- Order Financial Summary -->
+          <div class="cart-bottom">
+            <!-- Discounts & Compliance Controls -->
+            <div class="discount-control-group">
+              <label for="discount-type-select" class="control-label">Discount &amp; Statutory Compliance</label>
+              <select id="discount-type-select" class="cart-select">
+                <option value="none">Regular / No Discount</option>
+                <option value="pwd">PWD (20% + VAT Exempt)</option>
+                <option value="senior">Senior Citizen (20% + VAT Exempt)</option>
+                <option value="promo">Promo Code</option>
+              </select>
+            </div>
+
+            <!-- ID Capture Section (Mandatory when PWD or Senior selected) -->
+            <div id="id-capture-box" class="id-capture-box" hidden>
+              <div class="field-row">
+                <div>
+                  <label class="field-label-sm" for="id-type-select">ID Type</label>
+                  <select id="id-type-select" class="cart-select">
+                    <option value="Senior Citizen ID">Senior Citizen ID</option>
+                    <option value="PWD ID">PWD ID</option>
+                    <option value="Driver's License">Driver's License</option>
+                    <option value="UMID">UMID / SSS</option>
+                    <option value="Passport">Passport</option>
+                    <option value="National ID">PhilSys / National ID</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="field-label-sm" for="id-last-digits">Last 4 Digits</label>
+                  <input id="id-last-digits" class="cart-input" type="text" maxlength="4" placeholder="e.g. 4819">
+                </div>
+              </div>
+            </div>
+
+            <!-- Promo Code Input -->
+            <div id="promo-input-box" class="promo-input-box" hidden>
+              <div class="field-row">
+                <input id="promo-code-input" class="cart-input" type="text" placeholder="e.g. COFFEE10 or WOOD50">
+                <button type="button" class="button button-light" id="apply-promo-btn">Apply</button>
+              </div>
+              <small id="promo-message" class="promo-msg"></small>
+            </div>
+
+            <!-- Financial Calculations -->
+            <div class="subtotal-row">
+              <span>Gross Subtotal</span>
+              <span id="subtotal">₱0.00</span>
+            </div>
+            <div class="subtotal-row" id="discount-display-row" hidden>
+              <span id="discount-label">Discount</span>
+              <span id="discount-amount" class="text-discount">-₱0.00</span>
+            </div>
+            <div class="subtotal-row">
+              <span>VATable Sales</span>
+              <span id="vatable-sales">₱0.00</span>
+            </div>
+            <div class="subtotal-row">
+              <span>12% VAT <small>(included / calculated)</small></span>
+              <span id="tax">₱0.00</span>
+            </div>
+            <div class="subtotal-row" id="vat-exempt-row" hidden>
+              <span>VAT-Exempt Sales</span>
+              <span id="vat-exempt-sales">₱0.00</span>
+            </div>
+            <div class="total-row">
+              <span>Total Payable</span>
+              <strong id="cart-total">₱0.00</strong>
+            </div>
+
+            <button class="checkout-button" id="checkout-button" disabled>
+              <span>Take Payment</span>
+              <span>→</span>
+            </button>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- ========================================================
+         2. ORDERS & VOIDS VIEW
+         ======================================================== -->
+    <section id="orders-view" class="view">
+      <div class="page-heading compact-heading">
+        <div>
+          <h1>Order History &amp; Void Management</h1>
+          <p>Review orders, verify cashless references, and execute audited cancellations</p>
+        </div>
+        <div class="heading-actions">
+          <button class="button button-light" id="export-orders">Export Orders CSV</button>
+        </div>
+      </div>
+
+      <section class="panel orders-panel">
+        <div class="orders-toolbar">
+          <div class="search-box">
+            <input id="order-search" type="search" placeholder="Search by ticket #, customer, reference #, items..." aria-label="Search orders">
+          </div>
+          <div class="filter-tabs">
+            <button class="filter-chip selected" data-order-filter="all">All Orders</button>
+            <button class="filter-chip" data-order-filter="completed">Completed</button>
+            <button class="filter-chip" data-order-filter="voided">Voided (Balik-Stock)</button>
+            <button class="filter-chip" data-order-filter="waste">Waste / Lugi</button>
+          </div>
+        </div>
+        <div id="orders-count-indicator" style="font-size: 12px; color: var(--wood-medium); margin: 6px 0 10px; font-weight: 600;"></div>
+
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>TICKET #</th>
+                <th>DATE &amp; TIME</th>
+                <th>ITEMS &amp; MODIFIERS</th>
+                <th>SERVICE</th>
+                <th>PAYMENT METHOD &amp; REF</th>
+                <th>DISCOUNT / VAT</th>
+                <th>TOTAL</th>
+                <th>STATUS</th>
+                <th>ACTIONS</th>
+              </tr>
+            </thead>
+            <tbody id="order-rows"></tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+
+    <!-- ========================================================
+         3. SHIFT & CASH DRAWER BALANCING
+         ======================================================== -->
+    <section id="shift-view" class="view">
+      <div class="page-heading compact-heading">
+        <div>
+          <h1>Shift Management &amp; Cash Drawer Balancing</h1>
+          <p>Declare opening cash float, record cashless receipts, and balance the drawer</p>
+        </div>
+      </div>
+
+      <div class="shift-grid">
+        <section class="panel">
+          <div class="panel-header">
+            <h2>Current Shift Reconciliation</h2>
+          </div>
+          <div class="statement-container">
+            <div class="statement-row">
+              <span>Opening Cash Float (Petty Cash)</span>
+              <strong id="shift-opening-float">₱1,000.00</strong>
+            </div>
+            <div class="statement-row">
+              <span>Cash Sales Collected</span>
+              <strong id="shift-cash-sales">₱0.00</strong>
+            </div>
+            <div class="statement-row highlight">
+              <span>Expected Cash in Drawer</span>
+              <strong id="shift-expected-cash">₱1,000.00</strong>
+            </div>
+            <hr class="statement-divider">
+            <div class="statement-row">
+              <span>GCash Sales Total</span>
+              <strong id="shift-gcash-sales">₱0.00</strong>
+            </div>
+            <div class="statement-row">
+              <span>Maya Sales Total</span>
+              <strong id="shift-maya-sales">₱0.00</strong>
+            </div>
+            <div class="statement-row">
+              <span>Card / Other Sales Total</span>
+              <strong id="shift-card-sales">₱0.00</strong>
+            </div>
+            <div class="statement-row highlight">
+              <span>Total Non-Cash (Cashless) Collections</span>
+              <strong id="shift-cashless-total">₱0.00</strong>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <h2>Cash Drawer Balancing</h2>
+          </div>
+          <form id="cash-count-form" class="cash-count-form">
+            <label class="field-label" for="counted-cash-input">Counted Actual Cash in Drawer</label>
+            <input id="counted-cash-input" class="modal-input" type="number" step="0.01" min="0" placeholder="Enter counted cash in ₱" required>
+            
+            <div class="variance-box" id="variance-box">
+              <span>Drawer Variance:</span>
+              <strong id="shift-variance">₱0.00</strong>
+              <small id="variance-status">Balanced</small>
+            </div>
+
+            <button type="submit" class="button button-dark" style="width: 100%; margin-top: 15px;">Verify &amp; Balance Drawer</button>
+          </form>
+        </section>
+      </div>
+    </section>
+
+    <!-- ========================================================
+         4. VISUAL ANALYTICS DASHBOARD (WITH CHARTS & GRAPHS)
+         ======================================================== -->
+    <section id="analytics-view" class="view">
+      <div class="page-heading compact-heading">
+        <div>
+          <h1>Visual Sales &amp; Business Intelligence</h1>
+          <p>Interactive graphical trends, category distributions &amp; peak trading hours</p>
+        </div>
+        <!-- Preset Date Filters & Simulation Controls -->
+        <div class="analytics-filter-bar">
+          <button class="analytics-filter-btn selected" data-range="today">Today</button>
+          <button class="analytics-filter-btn" data-range="week">This Week</button>
+          <button class="analytics-filter-btn" data-range="month">This Month</button>
+          <button class="analytics-filter-btn" data-range="quarter">This Quarter</button>
+          <button class="analytics-filter-btn" data-range="sixths">Semi-Annual (Sixths)</button>
+          <button class="analytics-filter-btn" data-range="year">This Year</button>
+          <button class="analytics-filter-btn" data-range="custom">Custom Range</button>
+        </div>
+      </div>
+
+      <!-- Custom Date Picker Row -->
+      <div id="custom-date-box" class="custom-date-box" hidden>
+        <label for="custom-start-date">Start Date:</label>
+        <input type="date" id="custom-start-date" class="modal-input" style="width: auto;">
+        <label for="custom-end-date">End Date:</label>
+        <input type="date" id="custom-end-date" class="modal-input" style="width: auto;">
+        <button class="button button-dark" id="btn-apply-custom-date">Filter</button>
+      </div>
+
+      <!-- Reference Layout: Top 4 KPI Metrics -->
+      <div class="analytics-kpi-row">
+        <div class="analytics-kpi-card">
+          <div class="kpi-icon">☕</div>
+          <div>
+            <span class="kpi-title">Total Sales</span>
+            <strong class="kpi-value" id="an-revenue">₱0.00</strong>
+            <small class="kpi-sub" id="an-revenue-delta">₱0.00 baseline</small>
+          </div>
+        </div>
+        <div class="analytics-kpi-card">
+          <div class="kpi-icon">👥</div>
+          <div>
+            <span class="kpi-title">Total Footfall / Orders</span>
+            <strong class="kpi-value" id="an-orders">0</strong>
+            <small class="kpi-sub" id="an-orders-delta">0 orders recorded</small>
+          </div>
+        </div>
+        <div class="analytics-kpi-card">
+          <div class="kpi-icon">🧾</div>
+          <div>
+            <span class="kpi-title">Avg Bill / Person (AOV)</span>
+            <strong class="kpi-value" id="an-aov">₱0.00</strong>
+            <small class="kpi-sub" id="an-aov-delta">₱0.00 baseline</small>
+          </div>
+        </div>
+        <div class="analytics-kpi-card">
+          <div class="kpi-icon">📈</div>
+          <div>
+            <span class="kpi-title">Estimated Net Profit</span>
+            <strong class="kpi-value text-accent" id="an-net-profit">₱0.00</strong>
+            <small class="kpi-sub" id="an-profit-delta">₱0.00 baseline</small>
+          </div>
+        </div>
+      </div>
+
+      <!-- Reference Layout: Visual Charts Grid -->
+      <div class="charts-grid">
+        <!-- Chart 1: Hourly Trading Volume Curve (Line / Curve Graph) -->
+        <div class="chart-card">
+          <div class="chart-header">
+            <h3>Quantity Ordered Based on Hours (Trading Curve)</h3>
+            <span class="chart-meta">7:00 AM – 9:00 PM</span>
+          </div>
+          <div class="chart-container" id="chart-hourly-container">
+            <svg id="svg-hourly-chart" class="chart-svg" viewBox="0 0 600 220" preserveAspectRatio="none">
+              <!-- Dynamically populated line/curve path -->
+            </svg>
+            <div id="chart-hourly-empty" class="chart-empty">No orders in this period (0 baseline). Orders will plot live here.</div>
+          </div>
+        </div>
+
+        <!-- Chart 2: Category % Distribution Based on Sales (Segmented Visual Bar / Donut) -->
+        <div class="chart-card">
+          <div class="chart-header">
+            <h3>Categories % Distribution Based on Sales</h3>
+            <span class="chart-meta">Category Revenue Share</span>
+          </div>
+          <div class="chart-container" id="chart-category-container">
+            <div id="category-bars-list" class="category-bars-list">
+              <!-- Dynamically populated visual progress bars -->
+            </div>
+            <div id="chart-category-empty" class="chart-empty">0 sales recorded. Category proportions will appear upon first sale.</div>
+          </div>
+        </div>
+
+        <!-- Chart 3: Size / Temperature Distribution (Hot 8 oz vs Iced 16 oz) -->
+        <div class="chart-card">
+          <div class="chart-header">
+            <h3>Size &amp; Temperature Distribution</h3>
+            <span class="chart-meta">Hot (8 oz) vs Iced (16 oz) vs Food</span>
+          </div>
+          <div class="chart-container" id="chart-size-container">
+            <div class="size-donut-wrapper">
+              <svg id="svg-size-donut" class="donut-svg" viewBox="0 0 160 160">
+                <!-- SVG Donut Rings -->
+              </svg>
+              <div class="size-legend" id="size-legend-container">
+                <!-- Legend list -->
+              </div>
+            </div>
+            <div id="chart-size-empty" class="chart-empty">0 drinks served in this period.</div>
+          </div>
+        </div>
+
+        <!-- Chart 4: Top 5 Products Based on Sales (Bar Chart) -->
+        <div class="chart-card">
+          <div class="chart-header">
+            <h3>Top 5 Products Based on Sales</h3>
+            <span class="chart-meta">Units &amp; Revenue</span>
+          </div>
+          <div class="chart-container" id="chart-top5-container">
+            <div id="top5-bars-list" class="top5-bars-list">
+              <!-- Top 5 Bars -->
+            </div>
+            <div id="chart-top5-empty" class="chart-empty">No products sold in this period.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Detailed Breakdown Tables -->
+      <div class="analytics-grid">
+        <section class="panel">
+          <div class="panel-header">
+            <h2>Complete Menu Items Sales Ranking</h2>
+          </div>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>ITEM</th>
+                  <th>CATEGORY</th>
+                  <th>UNITS SOLD</th>
+                  <th>GROSS REVENUE</th>
+                </tr>
+              </thead>
+              <tbody id="top-selling-rows"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <h2>Hourly Sales Distribution</h2>
+          </div>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>HOUR</th>
+                  <th>ORDER COUNT</th>
+                  <th>VOLUME SHARE</th>
+                  <th>SALES GENERATED</th>
+                </tr>
+              </thead>
+              <tbody id="hourly-sales-rows"></tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <!-- ========================================================
+         5. EXECUTIVE PRINTABLE BUSINESS REPORT VIEW
+         (Exact document format from reference images)
+         ======================================================== -->
+    <section id="report-view" class="view">
+      <div class="page-heading compact-heading">
+        <div>
+          <h1>Executive Sales &amp; Business Report</h1>
+          <p>Formatted for executive review, stakeholders, and print/PDF distribution</p>
+        </div>
+        <div class="heading-actions">
+          <button class="button button-dark" id="btn-print-report">Print Executive Report 🖨</button>
+        </div>
+      </div>
+
+      <div class="executive-report-document" id="executive-report-doc">
+        <div class="report-header-block">
+          <div class="report-title">Coffee Shop Sales Report</div>
+          <div class="report-subtitle">Le Augem Café · Bricks &amp; Wood Edition · Operational Summary</div>
+          <div class="report-date-badge" id="report-period-badge">Reporting Window: Today</div>
+        </div>
+
+        <!-- Section I: Overview -->
+        <div class="report-section">
+          <h3>I. Overview of Sales Performance</h3>
+          <p class="report-prose">
+            Le Augem Café operates with a dual focus on artisanal crafted coffee and fresh bakery favorites. This section outlines performance metrics, revenue realization, and customer footfall trends across the selected operational window.
+          </p>
+
+          <h4>A. Total Sales Revenue</h4>
+          <p class="report-prose" id="report-sales-summary-text">
+            Total sales revenue recorded in this period stands at <strong>₱0.00</strong> across <strong>0 completed transactions</strong>.
+          </p>
+          <div class="report-table-box">
+            <table>
+              <thead>
+                <tr>
+                  <th>PERIOD METRIC</th>
+                  <th>VALUE</th>
+                  <th>ANALYSIS &amp; NOTES</th>
+                </tr>
+              </thead>
+              <tbody id="report-overview-table">
+                <!-- Dynamically generated rows -->
+              </tbody>
+            </table>
+          </div>
+
+          <h4>B. Customer Footfall &amp; Ticket Averages</h4>
+          <p class="report-prose" id="report-traffic-text">
+            Customer footfall is tracked on an order-by-order basis. The current average order value (AOV) is <strong>₱0.00 per ticket</strong>.
+          </p>
+        </div>
+
+        <!-- Section II: Product Analysis -->
+        <div class="report-section">
+          <h3>II. Product Sales Analysis</h3>
+          <p class="report-prose">
+            Analysis of drink and food performance by menu category, identifying top drivers of sales volume and potential candidates for promotional pairing.
+          </p>
+
+          <h4>A. Top-Selling Products</h4>
+          <ul class="report-bullets" id="report-top-products-list">
+            <li>No sales recorded yet for this period.</li>
+          </ul>
+
+          <h4>B. Category Revenue Realization</h4>
+          <div class="report-table-box">
+            <table>
+              <thead>
+                <tr>
+                  <th>CATEGORY</th>
+                  <th>UNITS SOLD</th>
+                  <th>GROSS REVENUE</th>
+                  <th>REVENUE SHARE %</th>
+                </tr>
+              </thead>
+              <tbody id="report-category-table">
+                <!-- Dynamically generated category breakdown -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Section III: Customer Satisfaction & Loyalty -->
+        <div class="report-section">
+          <h3>III. Customer Engagement &amp; Loyalty</h3>
+          <p class="report-prose">
+            Tracking customer repeat visits through our digital stamp reward program (10 stamps = 1 complimentary beverage).
+          </p>
+          <div class="report-table-box">
+            <table>
+              <thead>
+                <tr>
+                  <th>PROGRAM METRIC</th>
+                  <th>COUNT / VALUE</th>
+                  <th>STATUS</th>
+                </tr>
+              </thead>
+              <tbody id="report-loyalty-table">
+                <!-- Loyalty metrics -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Section IV: Financial Summary -->
+        <div class="report-section">
+          <h3>IV. Financial Summary &amp; Margins</h3>
+          <p class="report-prose">
+            Detailed breakdown of financial health, contrasting gross revenue against Cost of Goods Sold (ingredients and packaging) and Operational Expenses (OpEx).
+          </p>
+          <div class="report-table-box">
+            <table>
+              <thead>
+                <tr>
+                  <th>FINANCIAL COMPONENT</th>
+                  <th>AMOUNT (₱)</th>
+                  <th>% OF REVENUE</th>
+                </tr>
+              </thead>
+              <tbody id="report-finance-table">
+                <!-- Dynamic P&L rows -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================================
+         6. FINANCE & OPEX VIEW
+         ======================================================== -->
+    <section id="finance-view" class="view">
+      <div class="page-heading compact-heading">
+        <div>
+          <h1>Finance, Operating Expenses &amp; Cash Flow</h1>
+          <p>Non-inventory OpEx, cash flow reconciliation, and profit &amp; loss statements</p>
+        </div>
+        <div class="heading-actions">
+          <button class="button button-dark" id="btn-add-expense">＋ Record OpEx Expense</button>
+        </div>
+      </div>
+
+      <!-- Financial Health Cards -->
+      <div class="metrics-grid">
+        <div class="metric-card">
+          <span class="metric-label">Total Cash Inflow</span>
+          <strong class="metric-value" id="fin-total-inflow">₱0.00</strong>
+          <small class="metric-sub">Sales collections (Cash + Cashless)</small>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">Total Cash Outflow</span>
+          <strong class="metric-value text-warning" id="fin-total-outflow">₱0.00</strong>
+          <small class="metric-sub">OpEx + Stock purchases</small>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">Net Operating Cash Flow</span>
+          <strong class="metric-value text-accent" id="fin-net-cashflow">₱0.00</strong>
+          <small class="metric-sub">Net liquid cash generated</small>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">Wastage / "Lugi" Loss</span>
+          <strong class="metric-value text-warning" id="fin-total-waste">₱0.00</strong>
+          <small class="metric-sub">Spoiled / spilled orders</small>
+        </div>
+      </div>
+
+      <!-- Statement of Comprehensive Income & VAT Summary -->
+      <div class="finance-grid">
+        <section class="panel">
+          <div class="panel-header">
+            <h2>Profit &amp; Loss Statement (P&amp;L)</h2>
+          </div>
+          <div class="statement-container">
+            <div class="statement-row"><span>Gross Sales</span><strong id="pl-gross-sales">₱0.00</strong></div>
+            <div class="statement-row"><span>Less: Senior/PWD &amp; Promo Discounts</span><span id="pl-discounts" class="text-discount">-₱0.00</span></div>
+            <div class="statement-row highlight"><span>Net Sales (Revenue)</span><strong id="pl-net-sales">₱0.00</strong></div>
+            <div class="statement-row"><span>Less: Cost of Goods Sold (Ingredients + Packaging)</span><span id="pl-cogs">-₱0.00</span></div>
+            <div class="statement-row"><span>Less: Waste / "Lugi" Loss</span><span id="pl-waste">-₱0.00</span></div>
+            <div class="statement-row highlight"><span>Gross Profit</span><strong id="pl-gross-profit">₱0.00</strong></div>
+            <div class="statement-row"><span>Gross Profit Margin</span><span id="pl-margin">0.0%</span></div>
+            <div class="statement-row"><span>Less: Operating Expenses (OpEx)</span><span id="pl-opex">-₱0.00</span></div>
+            <div class="statement-row total-highlight"><span>Operating Profit (EBIT)</span><strong id="pl-operating-profit">₱0.00</strong></div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <h2>Philippine VAT Breakdown (12%)</h2>
+          </div>
+          <div class="statement-container">
+            <div class="statement-row"><span>VATable Sales (Tax Base)</span><strong id="vat-table-base">₱0.00</strong></div>
+            <div class="statement-row"><span>12% Output VAT</span><strong id="vat-output-amount">₱0.00</strong></div>
+            <div class="statement-row"><span>VAT-Exempt Sales (Senior/PWD)</span><strong id="vat-exempt-amount">₱0.00</strong></div>
+            <div class="statement-row"><span>Zero-Rated / Other Sales</span><strong>₱0.00</strong></div>
+            <div class="statement-row highlight"><span>Total Recorded Sales</span><strong id="vat-total-sales">₱0.00</strong></div>
+          </div>
+        </section>
+      </div>
+
+      <!-- OpEx Expense Ledger -->
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Operational Expenses Ledger (OpEx)</h2>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>DATE</th>
+                <th>EXPENSE CATEGORY</th>
+                <th>DESCRIPTION</th>
+                <th>PAID VIA</th>
+                <th>AMOUNT</th>
+                <th>ACTIONS</th>
+              </tr>
+            </thead>
+            <tbody id="opex-rows"></tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+
+    <!-- ========================================================
+         7. INVENTORY & COGS VIEW
+         ======================================================== -->
+    <section id="inventory-view" class="view">
+      <div class="page-heading compact-heading">
+        <div>
+          <h1>Inventory &amp; Cost of Goods Sold (COGS)</h1>
+          <p>Ingredient-level stock tracking (per gram, ml, pc) with weighted average costing</p>
+        </div>
+        <div class="heading-actions">
+          <button class="button button-light" id="btn-stock-in">＋ Stock-In / Purchase</button>
+          <button class="button button-dark" id="add-item-button">＋ Add Ingredient</button>
+        </div>
+      </div>
+
+      <div class="metrics-grid">
+        <div class="metric-card">
+          <span class="metric-label">Total Tracked Ingredients</span>
+          <strong class="metric-value" id="inv-total-count">0</strong>
+          <small class="metric-sub">Raw ingredients &amp; packaging</small>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">Total Inventory Valuation</span>
+          <strong class="metric-value" id="inv-total-valuation">₱0.00</strong>
+          <small class="metric-sub">Current assets on hand</small>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">Low Stock Alerts</span>
+          <strong class="metric-value text-warning" id="inv-low-count">0</strong>
+          <small class="metric-sub">Items below par level</small>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">Stock Movements Logged</span>
+          <strong class="metric-value" id="inv-movements-count">0</strong>
+          <small class="metric-sub">Sales, stock-in, &amp; returns</small>
+        </div>
+      </div>
+
+      <section class="panel inventory-panel">
+        <div class="inventory-toolbar">
+          <div class="search-box">
+            <input id="inventory-search" type="search" placeholder="Search ingredients, packaging, milk..." aria-label="Search inventory">
+          </div>
+          <div class="filter-tabs">
+            <button class="filter-chip selected" data-inv-filter="All">All Categories</button>
+            <button class="filter-chip" data-inv-filter="Coffee &amp; tea">Coffee &amp; Tea</button>
+            <button class="filter-chip" data-inv-filter="Milk &amp; dairy">Milk &amp; Dairy</button>
+            <button class="filter-chip" data-inv-filter="Packaging">Packaging</button>
+            <button class="filter-chip" data-inv-filter="Pantry">Pantry &amp; Syrups</button>
+            <button class="filter-chip" data-inv-filter="Bakery">Bakery</button>
+          </div>
+        </div>
+
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>INGREDIENT / ITEM</th>
+                <th>CATEGORY</th>
+                <th>IN STOCK</th>
+                <th>PAR LEVEL</th>
+                <th>UNIT COST</th>
+                <th>COST PER SERVING</th>
+                <th>STOCK STATUS</th>
+                <th>ACTIONS</th>
+              </tr>
+            </thead>
+            <tbody id="inventory-rows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Purchase Inflow History -->
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Stock Inflow &amp; Purchase History</h2>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>DATE</th>
+                <th>INGREDIENT</th>
+                <th>SUPPLIER</th>
+                <th>QTY ADDED</th>
+                <th>TOTAL COST</th>
+                <th>NEW AVG UNIT COST</th>
+              </tr>
+            </thead>
+            <tbody id="stock-in-rows"></tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+
+    <!-- ========================================================
+         8. MENU & RECIPES VIEW
+         ======================================================== -->
+    <section id="items-view" class="view">
+      <div class="page-heading compact-heading">
+        <div>
+          <h1>Menu Items &amp; Recipe Mapping</h1>
+          <p>Configure products, variants, selling price, and ingredient recipes for automatic COGS</p>
+        </div>
+        <div class="heading-actions">
+          <button class="button button-dark" id="add-menu-item">＋ Add Menu Item</button>
+        </div>
+      </div>
+
+      <section class="panel items-panel">
+        <div class="inventory-toolbar items-toolbar">
+          <div class="search-box">
+            <input id="items-search" type="search" placeholder="Search menu items..." aria-label="Search menu items">
+          </div>
+          <div class="group-controls">
+            <div class="group-filter">
+              <span class="group-control-label">FILTER ITEMS</span>
+              <div class="category-tabs" id="item-groups" aria-label="Filter items by group"></div>
+            </div>
+            <div class="group-management">
+              <span class="group-control-label">MANAGE GROUPS</span>
+              <div class="group-action-buttons">
+                <button class="group-action" id="add-menu-group"><span aria-hidden="true">＋</span> Create</button>
+                <button class="group-action" id="edit-menu-groups"><span aria-hidden="true">✎</span> Edit</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>ITEM NAME</th>
+                <th>CATEGORY</th>
+                <th>VARIANT TYPE</th>
+                <th>SELLING PRICE</th>
+                <th>ESTIMATED COGS</th>
+                <th>GROSS MARGIN</th>
+                <th>RECIPE LINK</th>
+                <th>ACTIONS</th>
+              </tr>
+            </thead>
+            <tbody id="items-rows"></tbody>
+          </table>
+        </div>
+      </section>
+    </section>
   </main>
+
+  <!-- TOAST NOTIFICATION -->
   <div class="toast" id="toast" role="status"></div>
-  <dialog id="payment-dialog" class="modal"><form id="payment-form"><button class="modal-close" type="button" aria-label="Close">×</button><h2>Take payment</h2><p class="modal-copy">Select the payment method.</p><div class="payment-total"><span>Amount due</span><strong id="payment-amount">₱0.00</strong></div><label class="field-label" for="payment-method">Payment method</label><select id="payment-method" class="modal-select"><option>Cash</option><option>GCash</option><option>Card</option></select><label class="field-label" for="customer-name">Customer name (optional)</label><input id="customer-name" class="modal-input" placeholder="Customer name"><button class="checkout-button modal-submit" type="submit">Complete order <span>→</span></button></form></dialog>
-  <dialog id="item-dialog" class="modal"><form id="item-form"><button class="modal-close" type="button" aria-label="Close">×</button><h2>Add inventory item</h2><label class="field-label" for="new-item-name">Item name</label><input id="new-item-name" class="modal-input" placeholder="e.g. Oat milk" required><label class="field-label" for="new-item-category">Category</label><select id="new-item-category" class="modal-select"><option>Milk & dairy</option><option>Coffee & tea</option><option>Bakery</option><option>Produce</option><option>Pantry</option><option>Packaging</option></select><label class="field-label" for="new-item-cost">Unit cost</label><input id="new-item-cost" class="modal-input" type="number" min="0" step="0.01" placeholder="0.00" required><button class="checkout-button modal-submit" type="submit">Add item <span>→</span></button></form></dialog>
-  <dialog id="menu-item-dialog" class="modal"><form id="menu-item-form"><button class="modal-close" type="button" aria-label="Close">×</button><h2 id="menu-item-title">Add menu item</h2><input id="menu-item-id" type="hidden"><label class="field-label" for="menu-item-name">Item name</label><input id="menu-item-name" class="modal-input" placeholder="e.g. Iced latte" required><label class="field-label" for="menu-item-price">Price</label><input id="menu-item-price" class="modal-input" type="number" min="0" step="0.01" placeholder="150" required><label class="field-label" for="menu-item-category">Group</label><select id="menu-item-category" class="modal-select"></select><label class="field-label" for="menu-item-emoji">Icon (optional)</label><select id="menu-item-emoji" class="modal-select"><option value="">No icon</option><option value="☕">☕ Coffee</option><option value="🍵">🍵 Tea</option><option value="🧋">🧋 Iced drink</option><option value="🥐">🥐 Pastry</option><option value="🍰">🍰 Dessert</option><option value="🥪">🥪 Food</option><option value="🍋">🍋 Other</option></select><label class="field-label" for="menu-item-image">Image (optional)</label><input id="menu-item-image" class="modal-input" type="file" accept="image/*"><img id="menu-item-preview" class="menu-item-preview" alt="Selected item preview" hidden><button class="checkout-button modal-submit" type="submit">Save item</button></form></dialog>
-  <dialog id="menu-groups-dialog" class="modal"><form id="menu-groups-form"><button class="modal-close" type="button" aria-label="Close">×</button><h2>Menu groups</h2><p class="modal-copy">Rename a group or remove it. Removing a group moves its items to Ungrouped.</p><div id="menu-groups-list"></div><button class="checkout-button modal-submit" type="button" id="done-menu-groups">Done</button></form></dialog>
-  <dialog id="create-group-dialog" class="modal"><form id="create-group-form"><button class="modal-close" type="button" aria-label="Close">×</button><h2>Create menu group</h2><label class="field-label" for="new-menu-group-name">Group name</label><input id="new-menu-group-name" class="modal-input" placeholder="e.g. Seasonal drinks" required><button class="checkout-button modal-submit" type="submit">Create group</button></form></dialog>
+
+  <!-- ALL MODAL DIALOGS -->
+
+  <!-- 1. PAYMENT MODAL -->
+  <dialog id="payment-dialog" class="modal">
+    <form id="payment-form">
+      <button class="modal-close" type="button" aria-label="Close">×</button>
+      <h2>Take Payment</h2>
+      <p class="modal-copy">Select payment method and capture cashless verification.</p>
+
+      <div class="payment-total">
+        <span>Amount Due:</span>
+        <strong id="payment-amount">₱0.00</strong>
+      </div>
+
+      <label class="field-label" for="payment-method">Payment Method</label>
+      <select id="payment-method" class="modal-select">
+        <option value="Cash">Cash</option>
+        <option value="GCash">GCash</option>
+        <option value="Maya">Maya</option>
+        <option value="Card">Credit / Debit Card</option>
+      </select>
+
+      <!-- Cash Tendered & Change -->
+      <div id="cash-tendered-box">
+        <label class="field-label" for="cash-tendered">Amount Tendered</label>
+        <input id="cash-tendered" class="modal-input" type="number" min="0" step="0.01" placeholder="e.g. 500.00">
+        <div class="change-due-box">
+          <span>Change Due:</span>
+          <strong id="change-due">₱0.00</strong>
+        </div>
+      </div>
+
+      <!-- Cashless Reference Box -->
+      <div id="cashless-details-box" hidden>
+        <label class="field-label" for="cashless-ref-number">Transaction Reference Number <span class="required">*</span></label>
+        <input id="cashless-ref-number" class="modal-input" type="text" placeholder="e.g. 9028 1729 4819">
+
+        <div class="field-row">
+          <div>
+            <label class="field-label" for="cashless-provider">Provider / Bank</label>
+            <select id="cashless-provider" class="modal-select">
+              <option value="GCash">GCash</option>
+              <option value="Maya">Maya</option>
+              <option value="BPI">BPI</option>
+              <option value="BDO">BDO</option>
+              <option value="UnionBank">UnionBank</option>
+              <option value="Metrobank">Metrobank</option>
+              <option value="Other">Other Bank / E-Wallet</option>
+            </select>
+          </div>
+          <div>
+            <label class="field-label" for="cashless-datetime">Timestamp</label>
+            <input id="cashless-datetime" class="modal-input" type="datetime-local">
+          </div>
+        </div>
+      </div>
+
+      <label class="field-label" for="customer-name">Customer Name / Table (Optional)</label>
+      <input id="customer-name" class="modal-input" placeholder="Customer name or table #">
+
+      <button class="checkout-button modal-submit" type="submit">
+        <span>Complete Order &amp; Print Sticker</span>
+        <span>→</span>
+      </button>
+    </form>
+  </dialog>
+
+  <!-- 2. CUP STICKER PRINTER MODAL -->
+  <dialog id="sticker-modal" class="modal sticker-dialog">
+    <div class="sticker-content">
+      <button class="modal-close" type="button" aria-label="Close">×</button>
+      <h2>Cup / Order Sticker</h2>
+      <p class="modal-copy">Ready to print for barista prep.</p>
+
+      <div class="sticker-badge" id="sticker-preview"></div>
+
+      <div class="sticker-actions">
+        <button class="button button-dark" id="btn-print-sticker">Print Sticker 🖨</button>
+        <button class="button button-light" id="btn-close-sticker">Done</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- 3. ORDER VOID / CANCELLATION MODAL -->
+  <dialog id="void-dialog" class="modal">
+    <form id="void-form">
+      <button class="modal-close" type="button" aria-label="Close">×</button>
+      <h2>Void / Cancel Order</h2>
+      <p class="modal-copy" id="void-order-copy">Select cancellation reason and disposition.</p>
+      <input id="void-order-id" type="hidden">
+
+      <label class="field-label" for="void-reason">Cancellation Reason <span class="required">*</span></label>
+      <select id="void-reason" class="modal-select" required>
+        <option value="Customer changed mind">Customer Changed Mind</option>
+        <option value="Cashier accidental double-tap">Cashier Accidental Double-Tap</option>
+        <option value="Wrong item entered">Wrong Item Entered</option>
+        <option value="Spilled / Damaged drink">Spilled / Damaged During Preparation ("Lugi")</option>
+        <option value="Quality defect / Bad pull">Quality Defect / Bad Pull ("Lugi")</option>
+        <option value="Customer refused drink">Customer Refused Drink ("Lugi")</option>
+      </select>
+
+      <label class="field-label" for="void-disposition">Inventory Disposition <span class="required">*</span></label>
+      <select id="void-disposition" class="modal-select" required>
+        <option value="balik">Balik-Inventory (Order was not prepared; restock ingredients)</option>
+        <option value="lugi">Waste / "Lugi" (Already prepped or spilled; keep ingredients deducted as loss)</option>
+      </select>
+
+      <label class="field-label" for="void-manager-pin">Manager PIN <span class="required">*</span> <small>(Default: 1234)</small></label>
+      <input id="void-manager-pin" class="modal-input" type="password" placeholder="Enter 4-digit PIN" required>
+
+      <button class="checkout-button modal-submit" type="submit" style="background: #a53333;">
+        <span>Confirm Void Action</span>
+        <span>→</span>
+      </button>
+    </form>
+  </dialog>
+
+  <!-- 4. MODIFIER & RECIPE MODAL -->
+  <dialog id="modifier-dialog" class="modal">
+    <form id="modifier-form">
+      <button class="modal-close" type="button" aria-label="Close">×</button>
+      <h2 id="mod-item-name">Customize Item</h2>
+      <p class="modal-copy" id="mod-item-price">Base: ₱0.00</p>
+      <input id="mod-item-id" type="hidden">
+
+      <!-- Beverage Customization Sections -->
+      <div id="mod-beverage-sections">
+        <div class="mod-section" id="mod-roast-section">
+          <label class="field-label">Espresso Roast Profile (Latte-Based)</label>
+          <div class="mod-options">
+            <label class="mod-pill"><input type="radio" name="roast" value="Harmonie (Smooth)" checked> Harmonie (Smooth &amp; Balanced)</label>
+            <label class="mod-pill"><input type="radio" name="roast" value="Puissant (Bold)"> Puissant (Bold Espresso)</label>
+          </div>
+        </div>
+
+        <div class="mod-section" id="mod-milk-section">
+          <label class="field-label">Milk Selection</label>
+          <div class="mod-options" id="mod-milk-options">
+            <label class="mod-pill"><input type="radio" name="milk" value="Whole milk" checked> Whole Milk (+₱0)</label>
+            <label class="mod-pill"><input type="radio" name="milk" value="Oat milk"> Oat Milk (+₱40)</label>
+          </div>
+        </div>
+
+        <div class="mod-section" id="mod-addons-section">
+          <label class="field-label">Add-ons &amp; Upgrades</label>
+          <div class="mod-options">
+            <label class="mod-pill"><input type="checkbox" name="addons" value="Chia seed"> Chia Seed (+₱20)</label>
+            <label class="mod-pill"><input type="checkbox" name="addons" value="Extra shot"> Extra Shot (+₱40)</label>
+          </div>
+        </div>
+
+        <div class="mod-section" id="mod-syrup-section">
+          <label class="field-label">Syrup Pumps (+₱20 each)</label>
+          <div class="mod-options">
+            <label class="mod-pill"><input type="checkbox" name="syrup" value="Vanilla syrup"> Vanilla</label>
+            <label class="mod-pill"><input type="checkbox" name="syrup" value="Caramel syrup"> Caramel</label>
+            <label class="mod-pill"><input type="checkbox" name="syrup" value="Hazelnut syrup"> Hazelnut</label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Food & Pastry Customization Sections -->
+      <div id="mod-food-sections" hidden>
+        <div class="mod-section">
+          <label class="field-label">Preparation &amp; Serving</label>
+          <div class="mod-options">
+            <label class="mod-pill"><input type="radio" name="food_prep" value="Warmed / Toasted" checked> Warmed / Toasted</label>
+            <label class="mod-pill"><input type="radio" name="food_prep" value="Served as is"> Served as is (Room Temp)</label>
+          </div>
+        </div>
+
+        <div class="mod-section">
+          <label class="field-label">Packaging &amp; Cutlery</label>
+          <div class="mod-options">
+            <label class="mod-pill"><input type="checkbox" name="food_cutlery" value="Include Wooden Cutlery" checked> Include Wooden Cutlery</label>
+            <label class="mod-pill"><input type="checkbox" name="food_cutlery" value="Extra Napkins"> Extra Napkins</label>
+          </div>
+        </div>
+      </div>
+
+      <button class="checkout-button modal-submit" type="submit">
+        <span>Add Customized Item to Cart</span>
+        <span id="mod-total-btn">₱0.00</span>
+      </button>
+    </form>
+  </dialog>
+
+  <!-- 5. STOCK-IN MODAL -->
+  <dialog id="stock-in-dialog" class="modal">
+    <form id="stock-in-form">
+      <button class="modal-close" type="button" aria-label="Close">×</button>
+      <h2>Record Stock-In / Purchase</h2>
+      <p class="modal-copy">Receiving inventory increments stock and updates average unit cost.</p>
+
+      <label class="field-label" for="stock-in-item">Ingredient / Material <span class="required">*</span></label>
+      <select id="stock-in-item" class="modal-select" required></select>
+
+      <div class="field-row">
+        <div>
+          <label class="field-label" for="stock-in-qty">Quantity Added <span class="required">*</span></label>
+          <input id="stock-in-qty" class="modal-input" type="number" step="0.01" min="0.01" placeholder="e.g. 5" required>
+        </div>
+        <div>
+          <label class="field-label" for="stock-in-cost">Total Purchase Cost (₱) <span class="required">*</span></label>
+          <input id="stock-in-cost" class="modal-input" type="number" step="0.01" min="0" placeholder="e.g. 4900.00" required>
+        </div>
+      </div>
+
+      <label class="field-label" for="stock-in-supplier">Supplier / Vendor</label>
+      <input id="stock-in-supplier" class="modal-input" placeholder="e.g. Benguet Direct Roasters">
+
+      <label class="field-label" for="stock-in-date">Purchase Date</label>
+      <input id="stock-in-date" class="modal-input" type="date">
+
+      <button class="checkout-button modal-submit" type="submit">
+        <span>Receive Stock &amp; Update Unit Cost</span>
+        <span>→</span>
+      </button>
+    </form>
+  </dialog>
+
+  <!-- 6. OPEX EXPENSE MODAL -->
+  <dialog id="opex-dialog" class="modal">
+    <form id="opex-form">
+      <button class="modal-close" type="button" aria-label="Close">×</button>
+      <h2>Record Operating Expense (OpEx)</h2>
+      <p class="modal-copy">Record non-inventory shop operating costs.</p>
+
+      <label class="field-label" for="opex-category">Expense Category <span class="required">*</span></label>
+      <select id="opex-category" class="modal-select" required>
+        <option value="Utilities (Power & Water)">Utilities (Power &amp; Water)</option>
+        <option value="Ice Delivery">Ice Delivery</option>
+        <option value="Barista Wages & Labor">Barista Wages &amp; Labor</option>
+        <option value="Shop Rent">Shop Rent</option>
+        <option value="Cleaning & Paper Supplies">Cleaning &amp; Paper Supplies</option>
+        <option value="Equipment Repairs & Maintenance">Equipment Repairs &amp; Maintenance</option>
+        <option value="Marketing & Signage">Marketing &amp; Signage</option>
+        <option value="Other OpEx">Other Operational Expense</option>
+      </select>
+
+      <div class="field-row">
+        <div>
+          <label class="field-label" for="opex-amount">Amount (₱) <span class="required">*</span></label>
+          <input id="opex-amount" class="modal-input" type="number" step="0.01" min="0.01" placeholder="e.g. 650.00" required>
+        </div>
+        <div>
+          <label class="field-label" for="opex-method">Paid Via <span class="required">*</span></label>
+          <select id="opex-method" class="modal-select">
+            <option value="Petty Cash">Petty Cash</option>
+            <option value="GCash">GCash</option>
+            <option value="Bank Transfer">Bank Transfer</option>
+          </select>
+        </div>
+      </div>
+
+      <label class="field-label" for="opex-description">Description / Notes <span class="required">*</span></label>
+      <input id="opex-description" class="modal-input" placeholder="e.g. 5 bags tube ice for peak weekend" required>
+
+      <label class="field-label" for="opex-date">Expense Date</label>
+      <input id="opex-date" class="modal-input" type="date">
+
+      <button class="checkout-button modal-submit" type="submit">
+        <span>Save Expense to Ledger</span>
+        <span>→</span>
+      </button>
+    </form>
+  </dialog>
+
+  <!-- 7. LOYALTY MODAL -->
+  <dialog id="loyalty-dialog" class="modal">
+    <div class="loyalty-modal-content">
+      <button class="modal-close" type="button" aria-label="Close">×</button>
+      <h2>Customer Loyalty Program</h2>
+      <p class="modal-copy">Look up customer by phone/ID, track stamps, or redeem free drink reward.</p>
+
+      <div class="search-box" style="margin-bottom: 12px;">
+        <input id="loyalty-search" type="search" placeholder="Enter customer mobile # or name...">
+      </div>
+
+      <div id="loyalty-customer-results" class="loyalty-results-list"></div>
+
+      <hr style="margin: 16px 0; border: 0; border-top: 1px solid #ddd;">
+
+      <h3>Add New Loyalty Member</h3>
+      <form id="new-loyalty-form">
+        <div class="field-row">
+          <div>
+            <label class="field-label-sm" for="loyalty-name">Customer Name</label>
+            <input id="loyalty-name" class="modal-input" placeholder="e.g. Jordan Cruz" required>
+          </div>
+          <div>
+            <label class="field-label-sm" for="loyalty-phone">Mobile Number</label>
+            <input id="loyalty-phone" class="modal-input" placeholder="e.g. 09171234567" required>
+          </div>
+        </div>
+        <button type="submit" class="button button-dark" style="margin-top: 10px; width: 100%;">Create Loyalty Member</button>
+      </form>
+    </div>
+  </dialog>
+
+  <!-- 8. HELD TICKETS MODAL -->
+  <dialog id="pending-tickets-dialog" class="modal">
+    <button class="modal-close" type="button" aria-label="Close">×</button>
+    <h2>Held &amp; Pending Tickets</h2>
+    <p class="modal-copy">Select a ticket to resume order processing.</p>
+    <div id="pending-tickets-list" class="pending-list"></div>
+  </dialog>
+
+  <!-- 9. RECIPE BUILDER MODAL -->
+  <dialog id="recipe-dialog" class="modal">
+    <button class="modal-close" type="button" aria-label="Close">×</button>
+    <h2 id="recipe-modal-title">Recipe &amp; Ingredient Breakdown</h2>
+    <p class="modal-copy">Ingredients auto-deduct from stock upon completed sales.</p>
+    <input id="recipe-product-id" type="hidden">
+
+    <div id="recipe-ingredients-list" class="recipe-ingredients-list"></div>
+
+    <form id="add-recipe-ingredient-form" class="add-recipe-ingredient-form">
+      <div class="field-row">
+        <div>
+          <label class="field-label-sm" for="recipe-ing-select">Ingredient</label>
+          <select id="recipe-ing-select" class="modal-select"></select>
+        </div>
+        <div>
+          <label class="field-label-sm" for="recipe-ing-qty">Quantity Needed</label>
+          <input id="recipe-ing-qty" class="modal-input" type="number" step="0.1" min="0.1" placeholder="e.g. 18" required>
+        </div>
+      </div>
+      <button type="submit" class="button button-light" style="margin-top: 8px; width: 100%;">＋ Add to Recipe</button>
+    </form>
+  </dialog>
+
+  <!-- 10. ADD INVENTORY ITEM MODAL -->
+  <dialog id="item-dialog" class="modal">
+    <form id="item-form">
+      <button class="modal-close" type="button" aria-label="Close">×</button>
+      <h2>Add Inventory Item</h2>
+      <label class="field-label" for="new-item-name">Item Name</label>
+      <input id="new-item-name" class="modal-input" placeholder="e.g. Benguet Arabica Beans" required>
+      
+      <div class="field-row">
+        <div>
+          <label class="field-label" for="new-item-category">Category</label>
+          <select id="new-item-category" class="modal-select">
+            <option>Coffee &amp; tea</option>
+            <option>Milk &amp; dairy</option>
+            <option>Packaging</option>
+            <option>Produce</option>
+            <option>Pantry</option>
+            <option>Food Prep</option>
+            <option>Bakery</option>
+          </select>
+        </div>
+        <div>
+          <label class="field-label" for="new-item-unit">Unit of Measure</label>
+          <select id="new-item-unit" class="modal-select">
+            <option value="g">grams (g)</option>
+            <option value="ml">milliliters (ml)</option>
+            <option value="pcs">pieces (pcs)</option>
+            <option value="kg">kilograms (kg)</option>
+            <option value="L">liters (L)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="field-row">
+        <div>
+          <label class="field-label" for="new-item-cost">Cost per Unit (₱)</label>
+          <input id="new-item-cost" class="modal-input" type="number" min="0" step="0.0001" placeholder="e.g. 0.98" required>
+        </div>
+        <div>
+          <label class="field-label" for="new-item-qty">Initial Quantity</label>
+          <input id="new-item-qty" class="modal-input" type="number" min="0" step="0.01" placeholder="e.g. 1000" required>
+        </div>
+      </div>
+
+      <label class="field-label" for="new-item-par">Par / Reorder Threshold</label>
+      <input id="new-item-par" class="modal-input" type="number" min="0" step="0.1" placeholder="e.g. 500" required>
+
+      <button class="checkout-button modal-submit" type="submit">
+        <span>Save Ingredient</span>
+        <span>→</span>
+      </button>
+    </form>
+  </dialog>
+
+  <!-- 11. MENU ITEM EDIT MODAL -->
+  <dialog id="menu-item-dialog" class="modal">
+    <form id="menu-item-form">
+      <button class="modal-close" type="button" aria-label="Close">×</button>
+      <h2 id="menu-item-title">Add Menu Item</h2>
+      <input id="menu-item-id" type="hidden">
+      
+      <label class="field-label" for="menu-item-name">Item Name</label>
+      <input id="menu-item-name" class="modal-input" placeholder="e.g. Spanish Latte" required>
+      
+      <label class="field-label" for="menu-item-detail">Description</label>
+      <input id="menu-item-detail" class="modal-input" placeholder="Rich espresso with sweet condensed milk">
+
+      <div class="field-row">
+        <div>
+          <label class="field-label" for="menu-item-price">Selling Price (₱)</label>
+          <input id="menu-item-price" class="modal-input" type="number" min="0" step="0.01" placeholder="170" required>
+        </div>
+        <div>
+          <label class="field-label" for="menu-item-variant">Variant / Type</label>
+          <select id="menu-item-variant" class="modal-select">
+            <option value="Hot">Hot</option>
+            <option value="Iced">Iced</option>
+            <option value="Pastry">Pastry</option>
+            <option value="Cake">Cake</option>
+            <option value="Special">Special</option>
+            <option value="Sandwich">Sandwich</option>
+            <option value="Dessert">Dessert</option>
+          </select>
+        </div>
+      </div>
+
+      <label class="field-label" for="menu-item-category">Group / Category</label>
+      <select id="menu-item-category" class="modal-select"></select>
+
+      <label class="field-label" for="menu-item-emoji">Icon</label>
+      <select id="menu-item-emoji" class="modal-select">
+        <option value="">No icon</option>
+        <option value="☕">☕ Coffee</option>
+        <option value="🍵">🍵 Tea</option>
+        <option value="🧋">🧋 Iced Drink</option>
+        <option value="🍫">🍫 Chocolate</option>
+        <option value="🥐">🥐 Pastry</option>
+        <option value="🍰">🍰 Cake</option>
+        <option value="🍝">🍝 Pasta</option>
+        <option value="🥪">🥪 Sandwich</option>
+        <option value="🍨">🍨 Dessert</option>
+      </select>
+
+      <label class="field-label" for="menu-item-image">Image (optional)</label>
+      <input id="menu-item-image" class="modal-input" type="file" accept="image/*">
+      <img id="menu-item-preview" class="menu-item-preview" alt="Selected item preview" hidden>
+      <button id="remove-menu-image" class="restock-btn remove-image-btn" type="button" hidden>Remove image</button>
+      
+      <button class="checkout-button modal-submit" type="submit">Save Menu Item</button>
+    </form>
+  </dialog>
+
+  <!-- 12. MENU GROUPS DIALOG -->
+  <dialog id="menu-groups-dialog" class="modal">
+    <form id="menu-groups-form">
+      <button class="modal-close" type="button" aria-label="Close">×</button>
+      <h2>Menu Groups</h2>
+      <p class="modal-copy">Rename a group or remove it.</p>
+      <div id="menu-groups-list"></div>
+      <button class="checkout-button modal-submit" type="button" id="done-menu-groups">Done</button>
+    </form>
+  </dialog>
+
+  <!-- 13. CREATE GROUP DIALOG -->
+  <dialog id="create-group-dialog" class="modal">
+    <form id="create-group-form">
+      <button class="modal-close" type="button" aria-label="Close">×</button>
+      <h2>Create Menu Group</h2>
+      <label class="field-label" for="new-menu-group-name">Group Name</label>
+      <input id="new-menu-group-name" class="modal-input" placeholder="e.g. Seasonal Specials" required>
+      <button class="checkout-button modal-submit" type="submit">Create Group</button>
+    </form>
+  </dialog>
 </body>
 </html>
