@@ -39,6 +39,7 @@
       <button class="nav-link" data-view="finance">Finance &amp; OpEx</button>
       <button class="nav-link" data-view="inventory">Inventory &amp; COGS</button>
       <button class="nav-link" data-view="items">Menu &amp; Recipes</button>
+      <button class="nav-link" data-view="promos">Promos &amp; Discounts</button>
       <button class="nav-link" data-view="orders">All Orders</button>
       <button class="nav-link nav-switch" data-switch-mode="portal">⎋ Exit to Portal</button>
     </nav>
@@ -465,6 +466,22 @@
             <small class="kpi-sub" id="an-profit-delta">₱0.00 baseline</small>
           </div>
         </div>
+        <div class="analytics-kpi-card">
+          <div class="kpi-icon">🗑</div>
+          <div>
+            <span class="kpi-title">Operational Waste (Lugi)</span>
+            <strong class="kpi-value text-warning" id="an-waste-loss">₱0.00</strong>
+            <small class="kpi-sub" id="an-waste-delta">0 waste events</small>
+          </div>
+        </div>
+        <div class="analytics-kpi-card">
+          <div class="kpi-icon">🎁</div>
+          <div>
+            <span class="kpi-title">Complimentary Goodwill</span>
+            <strong class="kpi-value text-accent" id="an-goodwill-cost">₱0.00</strong>
+            <small class="kpi-sub" id="an-goodwill-delta">0 comp items</small>
+          </div>
+        </div>
       </div>
 
       <!-- Reference Layout: Visual Charts Grid -->
@@ -661,7 +678,7 @@
         <div class="report-section">
           <h3>III. Customer Engagement &amp; Loyalty</h3>
           <p class="report-prose">
-            Tracking customer repeat visits through our digital stamp reward program (10 stamps = 1 complimentary beverage).
+            Tracking customer repeat visits through our digital stamp reward program (12 stamps = 1 complimentary beverage).
           </p>
           <div class="report-table-box">
             <table>
@@ -735,9 +752,14 @@
           <small class="metric-sub">Net liquid cash generated</small>
         </div>
         <div class="metric-card">
-          <span class="metric-label">Wastage / "Lugi" Loss</span>
+          <span class="metric-label">Operational Waste / Spoilage (Lugi)</span>
           <strong class="metric-value text-warning" id="fin-total-waste">₱0.00</strong>
-          <small class="metric-sub">Spoiled / spilled orders</small>
+          <small class="metric-sub">Logged discards &amp; spilled orders</small>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">Complimentary Items / Goodwill</span>
+          <strong class="metric-value text-accent" id="fin-total-goodwill">₱0.00</strong>
+          <small class="metric-sub">Goodwill raw material cost</small>
         </div>
       </div>
 
@@ -752,7 +774,8 @@
             <div class="statement-row"><span>Less: Senior/PWD &amp; Promo Discounts</span><span id="pl-discounts" class="text-discount">-₱0.00</span></div>
             <div class="statement-row highlight"><span>Net Sales (Revenue)</span><strong id="pl-net-sales">₱0.00</strong></div>
             <div class="statement-row"><span>Less: Cost of Goods Sold (Ingredients + Packaging)</span><span id="pl-cogs">-₱0.00</span></div>
-            <div class="statement-row"><span>Less: Waste / "Lugi" Loss</span><span id="pl-waste">-₱0.00</span></div>
+            <div class="statement-row"><span>Less: Complimentary Items / Goodwill Spoilage</span><span id="pl-goodwill" class="text-discount">-₱0.00</span></div>
+            <div class="statement-row"><span>Less: Operational Waste / Spoilage Loss (Lugi)</span><span id="pl-waste" class="text-discount">-₱0.00</span></div>
             <div class="statement-row highlight"><span>Gross Profit</span><strong id="pl-gross-profit">₱0.00</strong></div>
             <div class="statement-row"><span>Gross Profit Margin</span><span id="pl-margin">0.0%</span></div>
             <div class="statement-row"><span>Less: Operating Expenses (OpEx)</span><span id="pl-opex">-₱0.00</span></div>
@@ -807,6 +830,7 @@
           <p>Ingredient-level stock tracking (per gram, ml, pc) with weighted average costing</p>
         </div>
         <div class="heading-actions">
+          <button class="button button-light" id="btn-spoilage-modal">🗑 Record Spoilage / Discard</button>
           <button class="button button-light" id="btn-stock-in">＋ Stock-In / Purchase</button>
           <button class="button button-dark" id="add-item-button">＋ Add Ingredient</button>
         </div>
@@ -890,6 +914,30 @@
           </table>
         </div>
       </section>
+
+      <!-- Spoilage & Operational Discards History -->
+      <section class="panel" style="margin-top: 20px;">
+        <div class="panel-header">
+          <h2>Operational Spoilage &amp; Discard History (Lugi Ledger)</h2>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>DATE</th>
+                <th>ITEM / INGREDIENT</th>
+                <th>QTY DISCARDED</th>
+                <th>UNIT COST</th>
+                <th>TOTAL LOSS</th>
+                <th>REASON</th>
+                <th>NOTES</th>
+                <th>ACTIONS</th>
+              </tr>
+            </thead>
+            <tbody id="spoilage-rows"></tbody>
+          </table>
+        </div>
+      </section>
     </section>
 
     <!-- ========================================================
@@ -941,6 +989,75 @@
               </tr>
             </thead>
             <tbody id="items-rows"></tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+
+    <!-- PROMOS & DISCOUNTS VIEW (MANAGEMENT) -->
+    <section id="promos-view" class="view" aria-label="Promos & Discounts Management">
+      <div class="view-heading">
+        <div>
+          <h1>Promotions &amp; Discounts</h1>
+          <p>Create, manage, and toggle promo vouchers, percentage discounts, and order offers</p>
+        </div>
+        <div class="heading-actions">
+          <button class="button button-dark" id="btn-add-promo">＋ New Promo Code</button>
+        </div>
+      </div>
+
+      <div class="metrics-grid">
+        <article class="metric-card">
+          <span class="metric-label">ACTIVE PROMOS</span>
+          <span class="metric-value" id="promo-metric-active">0</span>
+          <span class="metric-foot">Available at POS checkout</span>
+        </article>
+        <article class="metric-card">
+          <span class="metric-label">PERCENTAGE SCHEMES</span>
+          <span class="metric-value" id="promo-metric-percentage">0</span>
+          <span class="metric-foot">Rate-based discounts</span>
+        </article>
+        <article class="metric-card">
+          <span class="metric-label">FIXED AMOUNT OFF</span>
+          <span class="metric-value" id="promo-metric-fixed">0</span>
+          <span class="metric-foot">Direct peso deductions</span>
+        </article>
+        <article class="metric-card">
+          <span class="metric-label">TOTAL REDEMPTIONS</span>
+          <span class="metric-value" id="promo-metric-uses">0</span>
+          <span class="metric-foot">Orders with promo applied</span>
+        </article>
+      </div>
+
+      <section class="panel">
+        <div class="inventory-toolbar">
+          <div class="search-box">
+            <input id="promo-search" type="search" placeholder="Search promo code or title..." aria-label="Search promotions">
+          </div>
+          <div class="category-tabs" id="promo-status-filter" aria-label="Filter promos by status">
+            <button class="category-tab active" data-promo-filter="All">All</button>
+            <button class="category-tab" data-promo-filter="Active">Active Only</button>
+            <button class="category-tab" data-promo-filter="Inactive">Inactive</button>
+            <button class="category-tab" data-promo-filter="percentage">Percentage (%)</button>
+            <button class="category-tab" data-promo-filter="fixed">Fixed (₱)</button>
+          </div>
+        </div>
+
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>CODE</th>
+                <th>NAME &amp; DESCRIPTION</th>
+                <th>DISCOUNT TYPE</th>
+                <th>VALUE</th>
+                <th>MIN SPEND</th>
+                <th>MAX CAP</th>
+                <th>STATUS</th>
+                <th>ACTIONS</th>
+              </tr>
+            </thead>
+            <tbody id="promos-rows"></tbody>
           </table>
         </div>
       </section>
@@ -1171,6 +1288,44 @@
     </form>
   </dialog>
 
+  <!-- 5B. SPOILAGE / DISCARD MODAL -->
+  <dialog id="spoilage-dialog" class="modal">
+    <form id="spoilage-form">
+      <button class="modal-close" type="button" aria-label="Close">×</button>
+      <h2>Record Spoilage / Discard</h2>
+      <p class="modal-copy">Log expired shelf-life, damaged, or discarded unsold stock. Inventory is decremented immediately and written off under Operational Waste / Spoilage Loss (Lugi).</p>
+
+      <label class="field-label" for="spoilage-item">Inventory Item / Material <span class="required">*</span></label>
+      <select id="spoilage-item" class="modal-select" required></select>
+
+      <div class="field-row">
+        <div>
+          <label class="field-label" for="spoilage-qty">Quantity Discarded <span class="required">*</span></label>
+          <input id="spoilage-qty" class="modal-input" type="number" step="any" min="0.01" placeholder="e.g. 14" required>
+        </div>
+        <div>
+          <label class="field-label" for="spoilage-reason">Discard Reason <span class="required">*</span></label>
+          <select id="spoilage-reason" class="modal-select" required>
+            <option value="Expired Shelf-Life (Unsold)">Expired Shelf-Life (Unsold)</option>
+            <option value="Damaged / Dropped">Damaged / Dropped</option>
+            <option value="Quality / Taste Issue">Quality / Taste Issue</option>
+          </select>
+        </div>
+      </div>
+
+      <label class="field-label" for="spoilage-date">Date of Discard <span class="required">*</span></label>
+      <input id="spoilage-date" class="modal-input" type="date" required>
+
+      <label class="field-label" for="spoilage-notes">Notes / Batch Details (Optional)</label>
+      <input id="spoilage-notes" class="modal-input" placeholder="e.g. Remaining 14 muffins from morning display">
+
+      <button class="checkout-button modal-submit" type="submit" style="background: var(--brick-primary, #b85333);">
+        <span>Record Spoilage &amp; Write Off Loss</span>
+        <span>→</span>
+      </button>
+    </form>
+  </dialog>
+
   <!-- 6. OPEX EXPENSE MODAL -->
   <dialog id="opex-dialog" class="modal">
     <form id="opex-form">
@@ -1250,6 +1405,21 @@
     </div>
   </dialog>
 
+  <!-- FREE DRINK REDEMPTION MODAL -->
+  <dialog id="redeem-dialog" class="modal">
+    <div class="loyalty-modal-content" style="max-width: 500px;">
+      <button class="modal-close" type="button" aria-label="Close">×</button>
+      <h2>🎁 Redeem Free Beverage</h2>
+      <p class="modal-copy" id="redeem-dialog-subtext">Choose a beverage to redeem for this customer (12 Stamps Reward).</p>
+
+      <div class="search-box" style="margin-bottom: 12px;">
+        <input id="redeem-drink-search" type="search" placeholder="Filter drinks (e.g. Latte, Americano, Matcha)...">
+      </div>
+
+      <div id="redeem-drink-list" style="max-height: 320px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding-right: 4px;"></div>
+    </div>
+  </dialog>
+
   <!-- 8. HELD TICKETS MODAL -->
   <dialog id="pending-tickets-dialog" class="modal">
     <button class="modal-close" type="button" aria-label="Close">×</button>
@@ -1286,7 +1456,8 @@
   <dialog id="item-dialog" class="modal">
     <form id="item-form">
       <button class="modal-close" type="button" aria-label="Close">×</button>
-      <h2>Add Inventory Item</h2>
+      <h2 id="item-dialog-title">Add Inventory Item</h2>
+      <input type="hidden" id="item-edit-id">
       <label class="field-label" for="new-item-name">Item Name</label>
       <input id="new-item-name" class="modal-input" placeholder="e.g. Benguet Arabica Beans" required>
       
@@ -1413,6 +1584,53 @@
       <label class="field-label" for="new-menu-group-name">Group Name</label>
       <input id="new-menu-group-name" class="modal-input" placeholder="e.g. Seasonal Specials" required>
       <button class="checkout-button modal-submit" type="submit">Create Group</button>
+    </form>
+  </dialog>
+  <!-- 14. PROMO & DISCOUNT DIALOG -->
+  <dialog id="promo-dialog" class="modal">
+    <form id="promo-form">
+      <button class="modal-close" type="button" aria-label="Close">×</button>
+      <h2 id="promo-dialog-title">New Promotion</h2>
+      <p class="modal-copy">Configure promo voucher code, discount rate or fixed amount, and spending limits.</p>
+      <input id="promo-id" type="hidden">
+
+      <label class="field-label" for="promo-code">Promo Code</label>
+      <input id="promo-code" class="modal-input" placeholder="e.g. SUMMER15" required style="text-transform: uppercase;">
+
+      <label class="field-label" for="promo-name">Display Name / Title</label>
+      <input id="promo-name" class="modal-input" placeholder="e.g. 15% Summer Specials Discount" required>
+
+      <div class="field-row">
+        <div>
+          <label class="field-label" for="promo-type">Discount Type</label>
+          <select id="promo-type" class="modal-select" required>
+            <option value="percentage">Percentage (%)</option>
+            <option value="fixed">Fixed Amount (₱)</option>
+          </select>
+        </div>
+        <div>
+          <label class="field-label" for="promo-value">Discount Value</label>
+          <input id="promo-value" class="modal-input" type="number" min="0.01" step="0.01" placeholder="15" required>
+        </div>
+      </div>
+
+      <div class="field-row">
+        <div>
+          <label class="field-label" for="promo-min-spend">Min. Spend (₱)</label>
+          <input id="promo-min-spend" class="modal-input" type="number" min="0" step="0.01" value="0" placeholder="0 = None">
+        </div>
+        <div>
+          <label class="field-label" for="promo-max-cap">Max Cap (₱)</label>
+          <input id="promo-max-cap" class="modal-input" type="number" min="0" step="0.01" value="0" placeholder="0 = None">
+        </div>
+      </div>
+
+      <div style="margin: 1rem 0; display: flex; align-items: center; gap: 0.5rem;">
+        <input type="checkbox" id="promo-active" checked style="width: auto; cursor: pointer;">
+        <label for="promo-active" style="margin: 0; font-size: 0.85rem; cursor: pointer;">Active (can be applied at checkout)</label>
+      </div>
+
+      <button class="checkout-button modal-submit" type="submit" id="btn-save-promo">Save Promotion</button>
     </form>
   </dialog>
 </body>

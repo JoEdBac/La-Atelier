@@ -606,6 +606,52 @@ button {
   color: var(--brick-primary);
 }
 
+/* Complimentary Items & Spoilage */
+.cart-comp-btn {
+  background: var(--cream);
+  border: 1px solid var(--border-subtle);
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--wood-medium);
+  padding: 2px 5px;
+  cursor: pointer;
+  margin-left: 4px;
+  transition: all 0.15s ease;
+}
+
+.cart-comp-btn:hover {
+  border-color: var(--accent-green);
+  color: var(--accent-green);
+  background: #e8f5e9;
+}
+
+.cart-comp-btn.active {
+  background: var(--accent-green);
+  border-color: #1b5e20;
+  color: #fff;
+}
+
+.comp-badge {
+  background: var(--accent-green);
+  color: #ffffff;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  display: inline-block;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+
+.cart-item.cart-item-comp {
+  background: #f4f9f4;
+  border-left: 3px solid var(--accent-green);
+  padding-left: 6px;
+}
+
 .loyalty-results-list {
   max-height: 220px;
   overflow-y: auto;

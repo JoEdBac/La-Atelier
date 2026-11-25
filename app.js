@@ -140,6 +140,7 @@ const readStore = (key, fallback) => {
       localStorage.removeItem('la-opex');
       localStorage.removeItem('la-stockin');
       localStorage.removeItem('la-pending-tickets');
+      localStorage.removeItem('la-spoilage');
       localStorage.setItem('la-version', APP_STORE_VERSION);
     }
     const val = localStorage.getItem(key);
@@ -159,24 +160,34 @@ let recipes = readStore('la-recipes', defaultRecipes);
 let orders = readStore('cg-orders', []);
 let opexLedger = readStore('la-opex', []);
 let stockInHistory = readStore('la-stockin', []);
+let spoilageLedger = readStore('la-spoilage', []);
 let pendingTickets = readStore('la-pending-tickets', []);
 let loyaltyMembers = readStore('la-loyalty', [
   { id: 'LOY-1001', name: 'Alex Reyes', phone: '09171234567', stamps: 0, history: [] },
   { id: 'LOY-1002', name: 'Maria Santos', phone: '09189876543', stamps: 0, history: [] }
 ]);
 
+const defaultPromos = [
+  { id: 'PRM-001', code: 'COFFEE10', name: '10% Off Entire Order', type: 'percentage', value: 10, minSpend: 0, maxCap: 0, active: true },
+  { id: 'PRM-002', code: 'WOOD50', name: '₱50.00 Off Order', type: 'fixed', value: 50, minSpend: 0, maxCap: 0, active: true },
+  { id: 'PRM-003', code: 'WELCOME20', name: '20% Welcome Voucher (Min ₱150, Max ₱100)', type: 'percentage', value: 20, minSpend: 150, maxCap: 100, active: true }
+];
+let promos = readStore('la-promos', defaultPromos);
+let activePromoFilter = 'All';
+
 // Mode state: 'portal', 'pos', or 'mgmt'
 let currentAppMode = 'portal';
-let activeCart = [];
-let activeService = 'Dine in';
+let activeCart = readStore('la-active-cart', []);
+let activeService = readStore('la-active-service', 'Dine in');
 let activeCategory = 'All';
 let activeSubcategory = 'All';
 let activeItemGroup = 'All';
 let activeInventoryFilter = 'All';
 let activeOrderFilter = 'all';
 let activeAnalyticsRange = 'today';
-let activeLoyaltyMember = null;
-let appliedDiscount = { type: 'none', idType: '', idLastDigits: '', promoCode: '', promoDiscount: 0 };
+let savedLoyaltyId = readStore('la-active-loyalty-id', null);
+let activeLoyaltyMember = savedLoyaltyId ? (loyaltyMembers.find(m => m.id === savedLoyaltyId) || null) : null;
+let appliedDiscount = readStore('la-applied-discount', { type: 'none', idType: '', idLastDigits: '', promoCode: '', promoDiscount: 0 });
 let currentShift = readStore('la-shift', {
   id: 'SHIFT-' + new Date().toISOString().slice(0, 10),
   openingFloat: 1000.00,
@@ -189,6 +200,18 @@ const $ = selector => typeof document !== 'undefined' ? document.querySelector(s
 const $$ = selector => typeof document !== 'undefined' ? [...document.querySelectorAll(selector)] : [];
 const peso = value => '₱' + Number(value || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+function saveCartState() {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem('la-active-cart', JSON.stringify(activeCart));
+    localStorage.setItem('la-active-service', JSON.stringify(activeService));
+    localStorage.setItem('la-active-loyalty-id', JSON.stringify(activeLoyaltyMember ? activeLoyaltyMember.id : null));
+    localStorage.setItem('la-applied-discount', JSON.stringify(appliedDiscount));
+  } catch (e) {
+    // ignore quota
+  }
+}
+
 const saveAll = () => {
   if (typeof localStorage === 'undefined') return true;
   try {
@@ -200,8 +223,11 @@ const saveAll = () => {
     localStorage.setItem('la-loyalty', JSON.stringify(loyaltyMembers));
     localStorage.setItem('la-opex', JSON.stringify(opexLedger));
     localStorage.setItem('la-stockin', JSON.stringify(stockInHistory));
+    localStorage.setItem('la-spoilage', JSON.stringify(spoilageLedger));
     localStorage.setItem('la-pending-tickets', JSON.stringify(pendingTickets));
+    localStorage.setItem('la-promos', JSON.stringify(promos));
     localStorage.setItem('la-shift', JSON.stringify(currentShift));
+    saveCartState();
     return true;
   } catch (e) {
     notify('Storage alert: LocalStorage quota exceeded.');
@@ -274,6 +300,7 @@ function showView(name) {
   if (name === 'orders') renderOrders();
   if (name === 'inventory') renderInventory();
   if (name === 'items') { renderItems(); renderItemGroups(); }
+  if (name === 'promos') renderPromos();
   if (name === 'finance') renderFinance();
   if (name === 'analytics') renderVisualAnalytics();
   if (name === 'report') renderExecutiveReport();
@@ -289,8 +316,11 @@ function renderPortalPulse() {
   const footfall = todaysOrders.length;
   const aov = footfall > 0 ? (grossSales / footfall) : 0;
   const cogs = todaysOrders.reduce((sum, o) => sum + (o.cogs || 0), 0);
+  const compGoodwill = todaysOrders.reduce((sum, o) => sum + (o.complimentaryCost || 0), 0);
+  const spoilageToday = spoilageLedger.filter(s => s.date === todayStr).reduce((sum, s) => sum + (s.totalCost || 0), 0);
+  const wastedToday = orders.filter(o => o.date === todayStr && o.status === 'Waste / Lugi').reduce((sum, o) => sum + (o.cogs || 0), 0);
   const opexToday = opexLedger.filter(op => op.date === todayStr).reduce((sum, op) => sum + op.amount, 0);
-  const netProfit = grossSales - cogs - opexToday;
+  const netProfit = grossSales - cogs - compGoodwill - spoilageToday - wastedToday - opexToday;
 
   if ($('#portal-gross-sales')) $('#portal-gross-sales').textContent = peso(grossSales);
   if ($('#portal-order-count')) $('#portal-order-count').textContent = `${footfall} orders today`;
@@ -305,7 +335,8 @@ function getIngredientCost(ingredientId) {
   return ing ? ing.cost : 0;
 }
 
-function calculateProductCOGS(productId, mods = {}) {
+function calculateProductCOGS(productOrId, mods = {}) {
+  const productId = typeof productOrId === 'object' && productOrId !== null ? productOrId.id : productOrId;
   const recipe = recipes[productId] || [];
   let totalCOGS = 0;
 
@@ -582,9 +613,32 @@ function addToCart(product, mods = {}, modifierPrice = 0) {
   renderCart();
 }
 
+const DRINK_CATEGORIES = ['Coffee-Based', 'Chocolate', 'Matcha', 'Tea-Based'];
+
+function getEligibleDrinkInCart(cart = activeCart) {
+  if (!Array.isArray(cart) || cart.length === 0) return null;
+  const prodList = (typeof products !== 'undefined' && products.length) ? products : defaultProducts;
+  const drinks = cart.filter(item => {
+    const prod = prodList.find(p => p.id === item.id);
+    return prod && DRINK_CATEGORIES.includes(prod.category) && !item.isComp;
+  });
+  if (!drinks.length) return null;
+  return drinks.slice().sort((a, b) => b.price - a.price)[0];
+}
+
 function renderCart() {
+  // If loyalty free drink promo is active, ensure it accurately reflects eligible drink in cart
+  if (appliedDiscount.promoCode === 'LOYALTY_FREE_DRINK') {
+    const eligibleDrink = getEligibleDrinkInCart();
+    if (eligibleDrink) {
+      appliedDiscount.promoDiscount = eligibleDrink.price;
+    } else {
+      appliedDiscount.promoDiscount = 0;
+    }
+  }
+
   const totalCount = activeCart.reduce((sum, item) => sum + item.qty, 0);
-  const grossSubtotal = activeCart.reduce((sum, item) => sum + (item.price * item.qty), 0);
+  const grossSubtotal = activeCart.reduce((sum, item) => sum + ((item.isComp ? 0 : item.price) * item.qty), 0);
 
   if ($('#cart-count')) $('#cart-count').textContent = totalCount;
   if ($('#service-label')) $('#service-label').textContent = activeService;
@@ -610,16 +664,18 @@ function renderCart() {
       if (item.mods.syrup && item.mods.syrup.length) modLabels.push(...item.mods.syrup.map(s => `+${s.replace(' syrup', '')}`));
 
       return `
-        <div class="cart-item">
+        <div class="cart-item ${item.isComp ? 'cart-item-comp' : ''}">
           <div class="cart-item-info">
-            <div style="display:flex; align-items:center; gap:4px;">
+            <div style="display:flex; align-items:center; gap:4px; flex-wrap:wrap;">
               <strong>${escapeHTML(item.name)}</strong>
+              ${item.isComp ? '<span class="comp-badge">Complimentary Item</span>' : ''}
+              <button type="button" class="cart-comp-btn ${item.isComp ? 'active' : ''}" data-comp-item="${item.cartItemId}" title="Toggle Complimentary Item">🎁 Comp</button>
               ${['Coffee-Based', 'Chocolate', 'Matcha', 'Tea-Based'].includes(products.find(p => p.id === item.id)?.category) ? `
                 <button type="button" class="cart-mod-btn" data-edit-mods="${item.cartItemId}" title="Edit modifications">✎ Mods</button>
               ` : ''}
             </div>
             ${modLabels.length ? `<span class="cart-item-mods">${escapeHTML(modLabels.join(', '))}</span>` : ''}
-            <small>${peso(item.price)} × ${item.qty} = <b>${peso(item.price * item.qty)}</b></small>
+            <small>${item.isComp ? '<b style="color:var(--accent-green, #2e7d32);">Complimentary Item (₱0.00)</b>' : `${peso(item.price)} × ${item.qty} = <b>${peso(item.price * item.qty)}</b>`}</small>
           </div>
           <div class="qty-controls">
             <button class="cart-qty-btn" data-cart-item="${item.cartItemId}" data-step="-1" aria-label="Decrease quantity">−</button>
@@ -629,6 +685,16 @@ function renderCart() {
         </div>
       `;
     }).join('');
+
+    $$('[data-comp-item]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const cId = btn.dataset.compItem;
+        const item = activeCart.find(i => i.cartItemId === cId);
+        if (!item) return;
+        item.isComp = !item.isComp;
+        renderCart();
+      });
+    });
 
     $$('[data-edit-mods]').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -649,6 +715,18 @@ function renderCart() {
 
         item.qty += step;
         if (item.qty <= 0) {
+          if (item.isLoyaltyReward && activeLoyaltyMember) {
+            activeLoyaltyMember.stamps += 12;
+            activeLoyaltyMember.history.push({
+              date: new Date().toISOString().slice(0, 10),
+              type: 'refund',
+              stamps: 12,
+              note: `Removed free drink (${item.name}) — 12 stamps refunded`
+            });
+            notify(`Removed free drink. 12 stamps refunded to ${activeLoyaltyMember.name}.`);
+            saveAll();
+            updateLoyaltyCustomerDisplay();
+          }
           activeCart = activeCart.filter(i => i.cartItemId !== cId);
         }
         renderCart();
@@ -711,6 +789,8 @@ function renderCart() {
     vatExemptSales,
     totalPayable
   };
+
+  saveCartState();
 }
 
 // --- Visual Analytics Dashboard (SVG Charts from References 1 & 2) ---
@@ -776,12 +856,38 @@ function renderVisualAnalytics() {
   const totalOrders = windowOrders.length;
   const aov = totalOrders > 0 ? (totalRevenue / totalOrders) : 0;
   const totalCOGS = windowOrders.reduce((sum, o) => sum + (o.cogs || 0), 0);
-  const netProfit = totalRevenue - totalCOGS;
+  const totalWindowGoodwill = windowOrders.reduce((sum, o) => sum + (o.complimentaryCost || 0), 0);
+
+  const windowSpoilage = spoilageLedger.filter(s => {
+    const sDate = new Date(s.timestamp || s.date);
+    return sDate >= start && sDate <= end;
+  });
+  const windowSpoilageLoss = windowSpoilage.reduce((sum, s) => sum + (s.totalCost || 0), 0);
+  const windowWastedOrders = orders.filter(o => {
+    if (o.status !== 'Waste / Lugi') return false;
+    const oDate = new Date(o.timestamp || o.date);
+    return oDate >= start && oDate <= end;
+  });
+  const windowWasteLoss = windowWastedOrders.reduce((sum, o) => sum + (o.cogs || 0), 0);
+  const totalWindowWaste = windowSpoilageLoss + windowWasteLoss;
+
+  let windowCompCount = 0;
+  windowOrders.forEach(o => {
+    (o.cartSnapshot || []).forEach(item => {
+      if (item.isComp) windowCompCount += item.qty;
+    });
+  });
+
+  const netProfit = totalRevenue - totalCOGS - totalWindowGoodwill - totalWindowWaste;
 
   if ($('#an-revenue')) $('#an-revenue').textContent = peso(totalRevenue);
   if ($('#an-orders')) $('#an-orders').textContent = totalOrders;
   if ($('#an-aov')) $('#an-aov').textContent = peso(aov);
   if ($('#an-net-profit')) $('#an-net-profit').textContent = peso(netProfit);
+  if ($('#an-waste-loss')) $('#an-waste-loss').textContent = peso(totalWindowWaste);
+  if ($('#an-waste-delta')) $('#an-waste-delta').textContent = `${windowSpoilage.length + windowWastedOrders.length} waste events`;
+  if ($('#an-goodwill-cost')) $('#an-goodwill-cost').textContent = peso(totalWindowGoodwill);
+  if ($('#an-goodwill-delta')) $('#an-goodwill-delta').textContent = `${windowCompCount} comp items`;
 
   if ($('#an-revenue-delta')) $('#an-revenue-delta').textContent = totalOrders === 0 ? '₱0.00 baseline' : `${peso(totalRevenue)} revenue`;
   if ($('#an-orders-delta')) $('#an-orders-delta').textContent = totalOrders === 0 ? '0 orders recorded' : `${totalOrders} orders`;
@@ -1027,8 +1133,23 @@ function renderExecutiveReport() {
   const totalDiscounts = windowOrders.reduce((sum, o) => sum + (o.discountAmount || 0), 0);
   const netSales = windowOrders.reduce((sum, o) => sum + o.total, 0);
   const totalCOGS = windowOrders.reduce((sum, o) => sum + (o.cogs || 0), 0);
+  const totalCompGoodwill = windowOrders.reduce((sum, o) => sum + (o.complimentaryCost || 0), 0);
+
+  const windowSpoilage = spoilageLedger.filter(s => {
+    const sDate = new Date(s.timestamp || s.date);
+    return sDate >= start && sDate <= end;
+  });
+  const windowSpoilageLoss = windowSpoilage.reduce((sum, s) => sum + (s.totalCost || 0), 0);
+  const windowWastedOrders = orders.filter(o => {
+    if (o.status !== 'Waste / Lugi') return false;
+    const oDate = new Date(o.timestamp || o.date);
+    return oDate >= start && oDate <= end;
+  });
+  const windowWasteLoss = windowWastedOrders.reduce((sum, o) => sum + (o.cogs || 0), 0);
+  const totalOperationalWaste = windowSpoilageLoss + windowWasteLoss;
+
   const totalOpEx = opexLedger.reduce((sum, e) => sum + e.amount, 0);
-  const operatingProfit = netSales - totalCOGS - totalOpEx;
+  const operatingProfit = netSales - totalCOGS - totalCompGoodwill - totalOperationalWaste - totalOpEx;
   const marginPct = netSales > 0 ? ((operatingProfit / netSales) * 100).toFixed(2) : '0.00';
   const footfall = windowOrders.length;
   const aov = footfall > 0 ? (netSales / footfall) : 0;
@@ -1103,7 +1224,7 @@ function renderExecutiveReport() {
     $('#report-loyalty-table').innerHTML = `
       <tr><td>Registered Loyalty Members</td><td><strong>${loyaltyMembers.length}</strong></td><td>Active digital accounts</td></tr>
       <tr><td>Stamps In Circulation</td><td><strong>${totalStamps} stamps</strong></td><td>Accumulated towards free beverage reward</td></tr>
-      <tr><td>Reward Threshold</td><td><strong>10 stamps = 1 Free Drink</strong></td><td>Redeemable directly on Barista POS</td></tr>
+      <tr><td>Reward Threshold</td><td><strong>12 stamps = 1 Free Drink</strong></td><td>Redeemable directly on Barista POS</td></tr>
     `;
   }
 
@@ -1112,6 +1233,8 @@ function renderExecutiveReport() {
     $('#report-finance-table').innerHTML = `
       <tr><td>Net Sales Revenue</td><td><strong>${peso(netSales)}</strong></td><td>100.0%</td></tr>
       <tr><td>Ingredient & Packaging Costs (COGS)</td><td><span class="text-discount">-${peso(totalCOGS)}</span></td><td>${netSales > 0 ? ((totalCOGS / netSales) * 100).toFixed(1) : '0.0'}%</td></tr>
+      <tr><td>Complimentary Items / Goodwill Cost</td><td><span class="text-discount">-${peso(totalCompGoodwill)}</span></td><td>${netSales > 0 ? ((totalCompGoodwill / netSales) * 100).toFixed(1) : '0.0'}%</td></tr>
+      <tr><td>Operational Waste / Spoilage Loss (Lugi)</td><td><span class="text-discount">-${peso(totalOperationalWaste)}</span></td><td>${netSales > 0 ? ((totalOperationalWaste / netSales) * 100).toFixed(1) : '0.0'}%</td></tr>
       <tr><td>Operating Expenses (OpEx)</td><td><span class="text-discount">-${peso(totalOpEx)}</span></td><td>${netSales > 0 ? ((totalOpEx / netSales) * 100).toFixed(1) : '0.0'}%</td></tr>
       <tr style="background:#faf8f5; font-weight:bold;">
         <td>Net Operating Profit</td>
@@ -1132,8 +1255,12 @@ function renderFinance() {
   const netSales = completedOrders.reduce((sum, o) => sum + o.total, 0);
 
   const totalCOGS = completedOrders.reduce((sum, o) => sum + (o.cogs || 0), 0);
-  const totalWasteLoss = wastedOrders.reduce((sum, o) => sum + (o.cogs || 0), 0);
-  const grossProfit = netSales - totalCOGS - totalWasteLoss;
+  const totalCompGoodwill = completedOrders.reduce((sum, o) => sum + (o.complimentaryCost || 0), 0);
+  const totalSpoilageLoss = spoilageLedger.reduce((sum, s) => sum + (s.totalCost || 0), 0);
+  const totalVoidWasteLoss = wastedOrders.reduce((sum, o) => sum + (o.cogs || 0), 0);
+  const totalOperationalWaste = totalSpoilageLoss + totalVoidWasteLoss;
+
+  const grossProfit = netSales - totalCOGS - totalCompGoodwill - totalOperationalWaste;
   const grossMargin = netSales > 0 ? ((grossProfit / netSales) * 100).toFixed(1) : '0.0';
 
   const totalOpEx = opexLedger.reduce((sum, e) => sum + e.amount, 0);
@@ -1151,13 +1278,15 @@ function renderFinance() {
   if ($('#fin-total-inflow')) $('#fin-total-inflow').textContent = peso(totalInflow);
   if ($('#fin-total-outflow')) $('#fin-total-outflow').textContent = peso(totalOutflow);
   if ($('#fin-net-cashflow')) $('#fin-net-cashflow').textContent = peso(netCashFlow);
-  if ($('#fin-total-waste')) $('#fin-total-waste').textContent = peso(totalWasteLoss);
+  if ($('#fin-total-waste')) $('#fin-total-waste').textContent = peso(totalOperationalWaste);
+  if ($('#fin-total-goodwill')) $('#fin-total-goodwill').textContent = peso(totalCompGoodwill);
 
   if ($('#pl-gross-sales')) $('#pl-gross-sales').textContent = peso(grossSales);
   if ($('#pl-discounts')) $('#pl-discounts').textContent = `-${peso(totalDiscounts)}`;
   if ($('#pl-net-sales')) $('#pl-net-sales').textContent = peso(netSales);
   if ($('#pl-cogs')) $('#pl-cogs').textContent = `-${peso(totalCOGS)}`;
-  if ($('#pl-waste')) $('#pl-waste').textContent = `-${peso(totalWasteLoss)}`;
+  if ($('#pl-goodwill')) $('#pl-goodwill').textContent = `-${peso(totalCompGoodwill)}`;
+  if ($('#pl-waste')) $('#pl-waste').textContent = `-${peso(totalOperationalWaste)}`;
   if ($('#pl-gross-profit')) $('#pl-gross-profit').textContent = peso(grossProfit);
   if ($('#pl-margin')) $('#pl-margin').textContent = `${grossMargin}%`;
   if ($('#pl-opex')) $('#pl-opex').textContent = `-${peso(totalOpEx)}`;
@@ -1307,6 +1436,7 @@ function renderInventory() {
         <td><span class="status-pill ${statusClass}">${statusText}</span></td>
         <td>
           <button class="restock-btn" data-quick-stockin="${i.id}">＋ Stock</button>
+          <button class="restock-btn" data-edit-ing="${i.id}">✎ Edit</button>
           <button class="restock-btn" data-delete-ing="${i.id}" style="color:#a53333;">Remove</button>
         </td>
       </tr>
@@ -1326,8 +1456,43 @@ function renderInventory() {
     `).join('') : '<tr><td colspan="6" class="no-results">No stock-in records yet (0 baseline).</td></tr>';
   }
 
+  if ($('#spoilage-rows')) {
+    $('#spoilage-rows').innerHTML = spoilageLedger.length ? spoilageLedger.map((s, idx) => `
+      <tr>
+        <td>${escapeHTML(s.date)}</td>
+        <td><strong>${escapeHTML(s.ingredientName)}</strong></td>
+        <td>${s.qty} ${escapeHTML(s.unit)}</td>
+        <td>${peso(s.unitCost)}/${escapeHTML(s.unit)}</td>
+        <td><span class="text-discount">-${peso(s.totalCost)}</span></td>
+        <td><span class="status-pill waste">${escapeHTML(s.reason)}</span></td>
+        <td>${escapeHTML(s.notes || '—')}</td>
+        <td>
+          <button class="restock-btn" data-delete-spoilage="${idx}" style="color:#a53333;">Remove</button>
+        </td>
+      </tr>
+    `).join('') : '<tr><td colspan="8" class="no-results">No operational spoilage or discards recorded yet (₱0.00 loss).</td></tr>';
+
+    $$('[data-delete-spoilage]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = Number(btn.dataset.deleteSpoilage);
+        spoilageLedger.splice(idx, 1);
+        saveAll();
+        renderInventory();
+        renderFinance();
+        renderPortalPulse();
+        renderVisualAnalytics();
+        renderExecutiveReport();
+        notify('Spoilage record removed.');
+      });
+    });
+  }
+
   $$('[data-quick-stockin]').forEach(btn => {
     btn.addEventListener('click', () => openStockInModal(Number(btn.dataset.quickStockin)));
+  });
+
+  $$('[data-edit-ing]').forEach(btn => {
+    btn.addEventListener('click', () => openIngredientModal(Number(btn.dataset.editIng)));
   });
 
   $$('[data-delete-ing]').forEach(btn => {
@@ -1343,16 +1508,80 @@ function renderInventory() {
   });
 }
 
+function openIngredientModal(ingId = null) {
+  const form = $('#item-form');
+  if (form) form.reset();
+  const title = $('#item-dialog-title');
+  const editIdInput = $('#item-edit-id');
+  const ing = ingId ? inventory.find(i => i.id === ingId) : null;
+
+  if (ing) {
+    if (title) title.textContent = 'Edit Inventory Item';
+    if (editIdInput) editIdInput.value = ing.id;
+    if ($('#new-item-name')) $('#new-item-name').value = ing.name;
+    if ($('#new-item-category')) $('#new-item-category').value = ing.category;
+    if ($('#new-item-unit')) $('#new-item-unit').value = ing.unit;
+    if ($('#new-item-cost')) $('#new-item-cost').value = ing.cost;
+    if ($('#new-item-qty')) $('#new-item-qty').value = ing.quantity;
+    if ($('#new-item-par')) $('#new-item-par').value = ing.par;
+  } else {
+    if (title) title.textContent = 'Add Inventory Item';
+    if (editIdInput) editIdInput.value = '';
+  }
+  $('#item-dialog')?.showModal();
+}
+
 function openStockInModal(preSelectedIngId = null) {
-  $('#stock-in-item').innerHTML = inventory.map(i => `
-    <option value="${i.id}" ${preSelectedIngId === i.id ? 'selected' : ''}>
-      ${escapeHTML(i.name)} (${escapeHTML(i.unit)}) - Current: ${i.quantity} ${escapeHTML(i.unit)}
-    </option>
-  `).join('');
-  $('#stock-in-date').value = new Date().toISOString().slice(0, 10);
-  $('#stock-in-form').reset();
-  if (preSelectedIngId) $('#stock-in-item').value = preSelectedIngId;
-  $('#stock-in-dialog').showModal();
+  $('#stock-in-form')?.reset();
+  if ($('#stock-in-item')) {
+    $('#stock-in-item').innerHTML = inventory.map(i => `
+      <option value="${i.id}" ${preSelectedIngId === i.id ? 'selected' : ''}>
+        ${escapeHTML(i.name)} (${escapeHTML(i.unit)}) - Current: ${i.quantity} ${escapeHTML(i.unit)}
+      </option>
+    `).join('');
+  }
+  if ($('#stock-in-date')) $('#stock-in-date').value = new Date().toISOString().slice(0, 10);
+  if (preSelectedIngId && $('#stock-in-item')) $('#stock-in-item').value = preSelectedIngId;
+  $('#stock-in-dialog')?.showModal();
+}
+
+function openSpoilageModal() {
+  const itemSelect = $('#spoilage-item');
+  if (itemSelect) {
+    itemSelect.innerHTML = inventory.map(i => `
+      <option value="${i.id}">${escapeHTML(i.name)} (${i.quantity} ${i.unit} on hand @ ${peso(i.cost)}/${i.unit})</option>
+    `).join('');
+  }
+  if ($('#spoilage-qty')) $('#spoilage-qty').value = '';
+  if ($('#spoilage-notes')) $('#spoilage-notes').value = '';
+  if ($('#spoilage-date')) $('#spoilage-date').value = new Date().toISOString().slice(0, 10);
+  $('#spoilage-dialog')?.showModal();
+}
+
+function recordSpoilageDiscard(itemId, qty, reason, date = null, notes = '') {
+  const ing = inventory.find(i => i.id === Number(itemId));
+  if (!ing || isNaN(qty) || qty <= 0) return null;
+
+  const lossAmount = Math.round(qty * ing.cost * 100) / 100;
+  ing.quantity = Math.max(0, ing.quantity - qty);
+
+  const spoilageEntry = {
+    id: 'SPL-' + Date.now(),
+    date: date || new Date().toISOString().slice(0, 10),
+    timestamp: new Date().toISOString(),
+    ingredientId: ing.id,
+    ingredientName: ing.name,
+    qty: Number(qty),
+    unit: ing.unit,
+    unitCost: ing.cost,
+    totalCost: lossAmount,
+    reason: reason || 'Expired Shelf-Life (Unsold)',
+    notes: notes || ''
+  };
+
+  spoilageLedger.unshift(spoilageEntry);
+  saveAll();
+  return spoilageEntry;
 }
 
 function renderItemGroups() {
@@ -1526,47 +1755,165 @@ function updateLoyaltyCustomerDisplay() {
   if (!container) return;
 
   if (activeLoyaltyMember) {
+    const isEligible = activeLoyaltyMember.stamps >= 12;
     container.innerHTML = `
       <div style="display:flex; justify-content:space-between; align-items:center;">
         <div>
           <strong>${escapeHTML(activeLoyaltyMember.name)}</strong> (${escapeHTML(activeLoyaltyMember.phone)})
-          <span class="loyalty-stamp-badge">${activeLoyaltyMember.stamps} Stamps</span>
+          <span class="loyalty-stamp-badge">${activeLoyaltyMember.stamps} / 12 Stamps</span>
         </div>
         <button type="button" class="restock-btn" id="btn-detach-loyalty" title="Detach customer" style="color:#a53333; margin-left:6px;">✕ Detach</button>
       </div>
-      ${activeLoyaltyMember.stamps >= 10 ? `<button type="button" class="restock-btn" id="btn-redeem-stamp" style="margin-top:6px; width:100%; background:#fff9e6; color:#8c6500; font-weight:bold;">Redeem Free Drink (10 Stamps)</button>` : ''}
+      ${isEligible ? `<button type="button" class="restock-btn" id="btn-redeem-stamp" style="margin-top:6px; width:100%; background:#fff9e6; color:#8c6500; font-weight:bold;">🎁 Redeem Free Drink (12 Stamps)</button>` : ''}
     `;
 
     $('#btn-detach-loyalty')?.addEventListener('click', () => {
+      const hadLoyaltyReward = (appliedDiscount.promoCode === 'LOYALTY_FREE_DRINK') || activeCart.some(i => i.isLoyaltyReward);
+      if (hadLoyaltyReward && activeLoyaltyMember) {
+        activeLoyaltyMember.stamps += 12;
+        activeLoyaltyMember.history.push({
+          date: new Date().toISOString().slice(0, 10),
+          type: 'refund',
+          stamps: 12,
+          note: 'Customer detached before checkout — 12 stamps refunded'
+        });
+        activeCart = activeCart.filter(i => !i.isLoyaltyReward);
+        appliedDiscount = { type: 'none', idType: '', idLastDigits: '', promoCode: '', promoDiscount: 0 };
+        if ($('#discount-type-select')) $('#discount-type-select').value = 'none';
+        notify(`Customer detached. 12 stamps refunded to ${activeLoyaltyMember.name}.`);
+      } else {
+        notify('Customer detached from ticket.');
+      }
       activeLoyaltyMember = null;
+      saveAll();
       updateLoyaltyCustomerDisplay();
-      notify('Customer detached from ticket.');
+      renderCart();
     });
 
     const redeemBtn = $('#btn-redeem-stamp');
     if (redeemBtn) {
       redeemBtn.addEventListener('click', () => {
-        if (confirm(`Redeem free beverage reward for ${activeLoyaltyMember.name}? This will deduct 10 stamps.`)) {
-          activeLoyaltyMember.stamps -= 10;
-          activeLoyaltyMember.history.push({
-            date: new Date().toISOString().slice(0, 10),
-            type: 'redeem',
-            stamps: -10,
-            note: 'Free drink reward redeemed'
-          });
-          appliedDiscount.promoCode = 'LOYALTY_FREE_DRINK';
-          appliedDiscount.promoDiscount = 140;
-          if ($('#discount-type-select')) $('#discount-type-select').value = 'promo';
-          saveAll();
-          updateLoyaltyCustomerDisplay();
-          renderCart();
-          notify('Loyalty reward redeemed! Discount applied.');
-        }
+        redeemFreeDrinkForMember(activeLoyaltyMember);
       });
     }
   } else {
     container.innerHTML = '<em>No customer attached (Guest)</em>';
   }
+}
+
+// --- Loyalty Free Drink Redemption (Supports Redeeming Without Prior Ordering) ---
+function redeemFreeDrinkForMember(member = activeLoyaltyMember) {
+  if (!member || member.stamps < 12) {
+    notify('Member needs at least 12 stamps to redeem a free drink reward.');
+    return;
+  }
+  activeLoyaltyMember = member;
+
+  const eligibleDrink = getEligibleDrinkInCart();
+  if (eligibleDrink) {
+    if (confirm(`Redeem free beverage reward for ${member.name}? This will deduct 12 stamps and discount ${eligibleDrink.name} to ₱0.00.`)) {
+      member.stamps -= 12;
+      member.history.push({
+        date: new Date().toISOString().slice(0, 10),
+        type: 'redeem',
+        stamps: -12,
+        note: `Free drink reward redeemed (${eligibleDrink.name})`
+      });
+      appliedDiscount.promoCode = 'LOYALTY_FREE_DRINK';
+      appliedDiscount.promoDiscount = eligibleDrink.price;
+      if ($('#discount-type-select')) $('#discount-type-select').value = 'promo';
+      saveAll();
+      updateLoyaltyCustomerDisplay();
+      renderCart();
+      notify(`Loyalty reward redeemed! ${eligibleDrink.name} is now FREE (₱0.00).`);
+    }
+  } else {
+    // If no drink in cart (empty cart or non-beverages), allow customer to pick free drink directly!
+    openRedeemDrinkModal(member);
+  }
+}
+
+function openRedeemDrinkModal(member = activeLoyaltyMember) {
+  if (!member || member.stamps < 12) return;
+  activeLoyaltyMember = member;
+
+  const dialog = $('#redeem-dialog');
+  if (!dialog) return;
+
+  const subtext = $('#redeem-dialog-subtext');
+  if (subtext) {
+    subtext.innerHTML = `Customer: <strong>${escapeHTML(member.name)}</strong> (${member.stamps} / 12 Stamps). Select any beverage below to redeem for free (₱0.00).`;
+  }
+
+  const searchInput = $('#redeem-drink-search');
+  if (searchInput) searchInput.value = '';
+
+  function renderDrinkList(filterText = '') {
+    const listContainer = $('#redeem-drink-list');
+    if (!listContainer) return;
+
+    const prodList = (typeof products !== 'undefined' && products.length) ? products : defaultProducts;
+    const query = String(filterText).trim().toLowerCase();
+    const availableDrinks = prodList.filter(p => DRINK_CATEGORIES.includes(p.category) && (!query || p.name.toLowerCase().includes(query) || p.category.toLowerCase().includes(query)));
+
+    if (!availableDrinks.length) {
+      listContainer.innerHTML = '<p class="modal-copy" style="text-align:center; padding:12px;">No matching beverages found.</p>';
+      return;
+    }
+
+    listContainer.innerHTML = availableDrinks.map(d => `
+      <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 10px; border-bottom:1px solid #eee; background:#fff; border-radius:4px;">
+        <div>
+          <strong>${escapeHTML(d.name)}</strong><br>
+          <small style="color:#666;">${escapeHTML(d.category)} • Regular: ${peso(d.price)}</small>
+        </div>
+        <button type="button" class="button button-dark" data-select-free-drink="${escapeHTML(d.id)}" style="padding:6px 12px; font-size:12px; background:#1b382b; color:#fff;">Redeem Free ☕</button>
+      </div>
+    `).join('');
+
+    $$('[data-select-free-drink]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const drinkId = btn.dataset.selectFreeDrink;
+        const drink = prodList.find(p => p.id === drinkId);
+        if (!drink) return;
+
+        // Deduct 12 stamps
+        member.stamps -= 12;
+        member.history.push({
+          date: new Date().toISOString().slice(0, 10),
+          type: 'redeem',
+          stamps: -12,
+          note: `Free drink reward redeemed (${drink.name})`
+        });
+
+        // Add directly to activeCart as complimentary item (₱0.00 customer charge)
+        activeCart.push({
+          cartItemId: 'CART-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4),
+          id: drink.id,
+          name: `${drink.name}`,
+          basePrice: drink.price,
+          price: 0,
+          isComp: true,
+          isLoyaltyReward: true,
+          qty: 1,
+          mods: { roast: 'Harmonie (Smooth)', milk: 'Whole milk', addons: [], syrup: [] }
+        });
+
+        saveAll();
+        $('#redeem-dialog')?.close();
+        updateLoyaltyCustomerDisplay();
+        renderCart();
+        notify(`Redeemed 12 stamps for ${member.name}! Added free ${drink.name} to order (₱0.00).`);
+      });
+    });
+  }
+
+  renderDrinkList('');
+  if (searchInput) {
+    searchInput.oninput = (e) => renderDrinkList(e.target.value);
+  }
+
+  dialog.showModal();
 }
 
 // --- Customer Loyalty Search & Registration ---
@@ -1595,12 +1942,12 @@ function renderLoyaltyResults(query = '') {
     <div class="loyalty-result-item">
       <div>
         <strong>${escapeHTML(m.name)}</strong> <small>(${escapeHTML(m.phone)})</small><br>
-        <span class="loyalty-stamp-badge">${m.stamps} / 10 Stamps</span>
-        ${m.stamps >= 10 ? '<span class="reward-ready-badge">Free Drink Ready! 🎁</span>' : ''}
+        <span class="loyalty-stamp-badge">${m.stamps} / 12 Stamps</span>
+        ${m.stamps >= 12 ? '<span class="reward-ready-badge">Free Drink Ready! 🎁</span>' : ''}
       </div>
       <div class="loyalty-item-actions">
         <button type="button" class="button button-dark" data-attach-loyalty="${escapeHTML(m.id)}">Attach to Ticket</button>
-        ${m.stamps >= 10 ? `<button type="button" class="button button-light" data-modal-redeem="${escapeHTML(m.id)}" style="color:#b85333;">Redeem (10)</button>` : ''}
+        ${m.stamps >= 12 ? `<button type="button" class="button button-light" data-modal-redeem="${escapeHTML(m.id)}" style="color:#b85333;">Redeem (12)</button>` : ''}
       </div>
     </div>
   `).join('');
@@ -1622,23 +1969,9 @@ function renderLoyaltyResults(query = '') {
     btn.addEventListener('click', () => {
       const id = btn.dataset.modalRedeem;
       const member = loyaltyMembers.find(m => m.id === id);
-      if (member && member.stamps >= 10) {
-        member.stamps -= 10;
-        member.history.push({
-          date: new Date().toISOString().slice(0, 10),
-          type: 'redeem',
-          stamps: -10,
-          note: 'Free drink reward redeemed'
-        });
-        activeLoyaltyMember = member;
-        appliedDiscount.promoCode = 'LOYALTY_FREE_DRINK';
-        appliedDiscount.promoDiscount = 140;
-        if ($('#discount-type-select')) $('#discount-type-select').value = 'promo';
-        saveAll();
-        updateLoyaltyCustomerDisplay();
-        renderCart();
-        $('#loyalty-dialog').close();
-        notify(`Redeemed 10 stamps for ${member.name}. Free drink discount applied.`);
+      if (member && member.stamps >= 12) {
+        $('#loyalty-dialog')?.close();
+        redeemFreeDrinkForMember(member);
       }
     });
   });
@@ -1656,14 +1989,179 @@ function openStickerModal(order) {
     <div class="sticker-row"><span>SERVICE:</span><span>${escapeHTML(order.service)}</span></div>
     <hr style="border:0; border-top:1px dashed #444; margin:8px 0;">
     ${order.cartSnapshot.map(item => `
-      <div class="sticker-item">${item.qty}x ${escapeHTML(item.name)}</div>
+      <div class="sticker-item">${item.qty}x ${escapeHTML(item.name)}${item.isComp ? ' [Complimentary Item (₱0.00)]' : ''}</div>
+      ${item.isComp ? `<div class="sticker-mods" style="color:var(--accent-green, #2e7d32); font-weight:bold;">• Complimentary Item (₱0.00)</div>` : ''}
       ${item.mods?.roast && item.mods.roast !== 'None' ? `<div class="sticker-mods">• Roast: ${escapeHTML(item.mods.roast)}</div>` : ''}
       ${item.mods?.milk && item.mods.milk !== 'None' && item.mods.milk !== 'Whole milk' ? `<div class="sticker-mods">• Milk: ${escapeHTML(item.mods.milk)}</div>` : ''}
       ${item.mods?.addons?.length ? `<div class="sticker-mods">• ${escapeHTML(item.mods.addons.join(', '))}</div>` : ''}
       ${item.mods?.syrup?.length ? `<div class="sticker-mods">• Syrups: ${escapeHTML(item.mods.syrup.join(', '))}</div>` : ''}
     `).join('')}
+
+    <hr style="border:0; border-top:2px dashed #444; margin:14px 0 10px;">
+    <div class="sticker-brand" style="margin-top:4px;">LE AUGEM CAFE · OFFICIAL RECEIPT</div>
+    <div class="sticker-row"><span>ORDER NO:</span><strong>${escapeHTML(order.id)}</strong></div>
+    <div class="sticker-row"><span>PAYMENT:</span><span>${escapeHTML(order.payment)} ${order.referenceNumber ? `(Ref: ${escapeHTML(order.referenceNumber)})` : ''}</span></div>
+    <div style="margin:8px 0; border-top:1px dashed #888; border-bottom:1px dashed #888; padding:6px 0;">
+      ${order.cartSnapshot.map(item => `
+        <div style="display:flex; justify-content:space-between; margin:2px 0;">
+          <span>${item.qty}x ${escapeHTML(item.name)}${item.isComp ? '<br><small style="color:var(--accent-green, #2e7d32); font-weight:bold;">Complimentary Item (₱0.00)</small>' : ''}</span>
+          <span>${item.isComp ? '₱0.00' : peso(item.price * item.qty)}</span>
+        </div>
+      `).join('')}
+    </div>
+    <div class="sticker-row"><span>Gross Subtotal:</span><span>${peso(order.grossTotal || order.total)}</span></div>
+    ${order.discountAmount ? `<div class="sticker-row"><span>Discount (${escapeHTML(order.discountType)}):</span><span>-${peso(order.discountAmount)}</span></div>` : ''}
+    ${order.complimentaryCost ? `<div class="sticker-row"><span>Complimentary Goodwill Cost:</span><span style="color:var(--accent-green, #2e7d32);">${peso(order.complimentaryCost)}</span></div>` : ''}
+    <div class="sticker-row" style="font-weight:bold; font-size:13px; margin-top:4px;"><span>TOTAL AMOUNT PAID:</span><span>${peso(order.total)}</span></div>
+    <div class="sticker-row" style="font-size:10px; color:#555; margin-top:4px;"><span>VATable: ${peso(order.vatableSales || 0)}</span><span>VAT (12%): ${peso(order.vatAmount || 0)}</span></div>
+    <div style="text-align:center; font-size:10px; color:#666; margin-top:8px;">Thank you for visiting Le Augem Cafe!</div>
   `;
   $('#sticker-modal').showModal();
+}
+
+// --- Manager Promos & Discounts Controller ---
+function renderPromos() {
+  const searchEl = $('#promo-search');
+  const query = searchEl ? searchEl.value.trim().toLowerCase() : '';
+
+  const activeCount = promos.filter(p => p.active).length;
+  const pctCount = promos.filter(p => p.type === 'percentage').length;
+  const fixedCount = promos.filter(p => p.type === 'fixed').length;
+
+  const promoOrders = orders.filter(o => o.promoCode && o.promoCode !== 'LOYALTY_FREE_DRINK');
+  const totalUses = promoOrders.length;
+
+  if ($('#promo-metric-active')) $('#promo-metric-active').textContent = activeCount;
+  if ($('#promo-metric-percentage')) $('#promo-metric-percentage').textContent = pctCount;
+  if ($('#promo-metric-fixed')) $('#promo-metric-fixed').textContent = fixedCount;
+  if ($('#promo-metric-uses')) $('#promo-metric-uses').textContent = totalUses;
+
+  const filtered = promos.filter(p => {
+    let matchesStatus = true;
+    if (activePromoFilter === 'Active') matchesStatus = p.active;
+    else if (activePromoFilter === 'Inactive') matchesStatus = !p.active;
+    else if (activePromoFilter === 'percentage') matchesStatus = p.type === 'percentage';
+    else if (activePromoFilter === 'fixed') matchesStatus = p.type === 'fixed';
+
+    const matchesQuery = `${p.code} ${p.name}`.toLowerCase().includes(query);
+    return matchesStatus && matchesQuery;
+  });
+
+  const rows = $('#promos-rows');
+  if (!rows) return;
+
+  if (!filtered.length) {
+    rows.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 2rem;">No promotions match your filter criteria.</td></tr>`;
+    return;
+  }
+
+  rows.innerHTML = filtered.map(p => {
+    const statusBadge = p.active
+      ? `<span class="service-pill" style="background:#e6f4ea; color:#137333; font-weight:600;">Active</span>`
+      : `<span class="service-pill" style="background:#fce8e6; color:#c5221f; font-weight:600;">Inactive</span>`;
+
+    const typeBadge = p.type === 'percentage'
+      ? `<span class="service-pill">Percentage (%)</span>`
+      : `<span class="service-pill">Fixed (₱)</span>`;
+
+    const valDisplay = p.type === 'percentage' ? `${p.value}% Off` : `${peso(p.value)} Off`;
+    const minDisplay = Number(p.minSpend) > 0 ? peso(p.minSpend) : '<span style="color:var(--text-muted);">None</span>';
+    const capDisplay = (p.type === 'percentage' && Number(p.maxCap) > 0) ? peso(p.maxCap) : '<span style="color:var(--text-muted);">No cap</span>';
+
+    return `
+      <tr>
+        <td><strong style="letter-spacing:0.05em; font-family:monospace; font-size:1rem; color:var(--text-accent);">${escapeHTML(p.code)}</strong></td>
+        <td>
+          <div style="font-weight:600;">${escapeHTML(p.name)}</div>
+        </td>
+        <td>${typeBadge}</td>
+        <td><strong style="color:var(--text-dark);">${valDisplay}</strong></td>
+        <td>${minDisplay}</td>
+        <td>${capDisplay}</td>
+        <td>${statusBadge}</td>
+        <td>
+          <button class="restock-btn" data-toggle-promo="${escapeHTML(p.id)}">${p.active ? 'Disable' : 'Enable'}</button>
+          <button class="restock-btn" data-edit-promo="${escapeHTML(p.id)}">✎ Edit</button>
+          <button class="restock-btn" data-delete-promo="${escapeHTML(p.id)}" style="color:#a53333;">🗑 Remove</button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  rows.querySelectorAll('[data-toggle-promo]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const p = promos.find(item => item.id === btn.dataset.togglePromo);
+      if (p) {
+        p.active = !p.active;
+        saveAll();
+        renderPromos();
+        notify(`Promo ${p.code} is now ${p.active ? 'Active' : 'Inactive'}.`);
+      }
+    });
+  });
+
+  rows.querySelectorAll('[data-edit-promo]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      openPromoModal(btn.dataset.editPromo);
+    });
+  });
+
+  rows.querySelectorAll('[data-delete-promo]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const p = promos.find(item => item.id === btn.dataset.deletePromo);
+      if (!p) return;
+      if (typeof confirm !== 'undefined' && !confirm(`Are you sure you want to remove promo "${p.code}"?`)) return;
+      promos = promos.filter(item => item.id !== p.id);
+      saveAll();
+      renderPromos();
+      notify(`Promo code ${p.code} removed.`);
+    });
+  });
+}
+
+function openPromoModal(promoId = null) {
+  const dialog = $('#promo-dialog');
+  if (!dialog) return;
+
+  const title = $('#promo-dialog-title');
+  const idInput = $('#promo-id');
+  const codeInput = $('#promo-code');
+  const nameInput = $('#promo-name');
+  const typeSelect = $('#promo-type');
+  const valInput = $('#promo-value');
+  const minSpendInput = $('#promo-min-spend');
+  const maxCapInput = $('#promo-max-cap');
+  const activeCheckbox = $('#promo-active');
+
+  if (promoId) {
+    const p = promos.find(item => item.id === promoId);
+    if (!p) return;
+    if (title) title.textContent = 'Edit Promotion';
+    if (idInput) idInput.value = p.id;
+    if (codeInput) codeInput.value = p.code;
+    if (nameInput) nameInput.value = p.name;
+    if (typeSelect) typeSelect.value = p.type;
+    if (valInput) valInput.value = p.value;
+    if (minSpendInput) minSpendInput.value = p.minSpend || 0;
+    if (maxCapInput) maxCapInput.value = p.maxCap || 0;
+    if (activeCheckbox) activeCheckbox.checked = !!p.active;
+  } else {
+    if (title) title.textContent = 'New Promotion';
+    if (idInput) idInput.value = '';
+    if (codeInput) codeInput.value = '';
+    if (nameInput) nameInput.value = '';
+    if (typeSelect) typeSelect.value = 'percentage';
+    if (valInput) valInput.value = '';
+    if (minSpendInput) minSpendInput.value = '0';
+    if (maxCapInput) maxCapInput.value = '0';
+    if (activeCheckbox) activeCheckbox.checked = true;
+  }
+
+  if (typeof dialog.showModal === 'function') {
+    dialog.showModal();
+  } else {
+    dialog.setAttribute('open', '');
+  }
 }
 
 // --- Browser Event Wireup Function (Guaranteed Execution) ---
@@ -1692,11 +2190,24 @@ function initApp() {
 
   $('#menu-search')?.addEventListener('input', renderProducts);
   $('#clear-cart')?.addEventListener('click', () => {
+    const hadLoyaltyReward = (appliedDiscount.promoCode === 'LOYALTY_FREE_DRINK') || activeCart.some(i => i.isLoyaltyReward);
+    if (hadLoyaltyReward && activeLoyaltyMember) {
+      activeLoyaltyMember.stamps += 12;
+      activeLoyaltyMember.history.push({
+        date: new Date().toISOString().slice(0, 10),
+        type: 'refund',
+        stamps: 12,
+        note: 'Order cleared before checkout — 12 stamps refunded'
+      });
+      notify(`Order cleared. 12 loyalty stamps refunded to ${activeLoyaltyMember.name}.`);
+    }
     activeCart = [];
     appliedDiscount = { type: 'none', idType: '', idLastDigits: '', promoCode: '', promoDiscount: 0 };
     if ($('#discount-type-select')) $('#discount-type-select').value = 'none';
     if ($('#id-capture-box')) $('#id-capture-box').hidden = true;
     if ($('#promo-input-box')) $('#promo-input-box').hidden = true;
+    saveAll();
+    updateLoyaltyCustomerDisplay();
     renderCart();
   });
 
@@ -1753,20 +2264,38 @@ function initApp() {
     const code = $('#promo-code-input').value.trim().toUpperCase();
     const subtotal = activeCart.reduce((sum, item) => sum + (item.price * item.qty), 0);
 
-    if (code === 'COFFEE10') {
-      appliedDiscount.promoCode = 'COFFEE10';
-      appliedDiscount.promoDiscount = subtotal * 0.10;
-      $('#promo-message').textContent = '10% promotional discount applied!';
-      notify('Promo code COFFEE10 applied.');
-    } else if (code === 'WOOD50') {
-      appliedDiscount.promoCode = 'WOOD50';
-      appliedDiscount.promoDiscount = Math.min(subtotal, 50);
-      $('#promo-message').textContent = '₱50.00 promotional discount applied!';
-      notify('Promo code WOOD50 applied.');
-    } else {
+    const foundPromo = promos.find(p => p.code.toUpperCase() === code);
+
+    if (!foundPromo) {
       appliedDiscount.promoDiscount = 0;
+      appliedDiscount.promoCode = '';
       $('#promo-message').textContent = 'Invalid promo code.';
       notify('Invalid promo code.');
+    } else if (!foundPromo.active) {
+      appliedDiscount.promoDiscount = 0;
+      appliedDiscount.promoCode = '';
+      $('#promo-message').textContent = 'This promo code is currently inactive.';
+      notify('Promo code is inactive.');
+    } else if (Number(foundPromo.minSpend) > 0 && subtotal < Number(foundPromo.minSpend)) {
+      appliedDiscount.promoDiscount = 0;
+      appliedDiscount.promoCode = '';
+      $('#promo-message').textContent = `Minimum order spend of ${peso(foundPromo.minSpend)} required.`;
+      notify(`Min spend ${peso(foundPromo.minSpend)} required.`);
+    } else {
+      let discount = 0;
+      if (foundPromo.type === 'percentage') {
+        discount = subtotal * (Number(foundPromo.value) / 100);
+        if (Number(foundPromo.maxCap) > 0 && discount > Number(foundPromo.maxCap)) {
+          discount = Number(foundPromo.maxCap);
+        }
+      } else {
+        discount = Math.min(subtotal, Number(foundPromo.value));
+      }
+
+      appliedDiscount.promoCode = foundPromo.code;
+      appliedDiscount.promoDiscount = discount;
+      $('#promo-message').textContent = `${foundPromo.name} applied (-${peso(discount)})`;
+      notify(`Promo code ${foundPromo.code} applied (-${peso(discount)})`);
     }
     renderCart();
   });
@@ -1931,8 +2460,14 @@ function initApp() {
     }
 
     let orderCOGS = 0;
+    let complimentaryCost = 0;
     activeCart.forEach(item => {
-      orderCOGS += calculateProductCOGS(item.id, item.mods) * item.qty;
+      const itemCOGS = calculateProductCOGS(item.id, item.mods) * item.qty;
+      if (item.isComp) {
+        complimentaryCost += itemCOGS;
+      } else {
+        orderCOGS += itemCOGS;
+      }
     });
 
     const now = new Date();
@@ -1944,7 +2479,7 @@ function initApp() {
       date: now.toISOString().slice(0, 10),
       time: now.toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' }),
       timestamp: now.toISOString(),
-      items: activeCart.map(i => `${i.name}${i.qty > 1 ? ` × ${i.qty}` : ''}`).join(', '),
+      items: activeCart.map(i => `${i.name}${i.isComp ? ' [Complimentary Item (₱0.00)]' : ''}${i.qty > 1 ? ` × ${i.qty}` : ''}`).join(', '),
       cartSnapshot: JSON.parse(JSON.stringify(activeCart)),
       service: activeService,
       payment: method,
@@ -1953,6 +2488,7 @@ function initApp() {
       grossTotal: appliedDiscount.computed.grossSubtotal,
       discountType,
       discountAmount: appliedDiscount.computed.discountAmount,
+      complimentaryCost: Math.round(complimentaryCost * 100) / 100,
       idType,
       idLastDigits,
       promoCode: appliedDiscount.promoCode || '',
@@ -2096,6 +2632,51 @@ function initApp() {
     notify(`Stocked in ${qty} ${ing.unit} of ${ing.name}.`);
   });
 
+  // Spoilage / Discard Form Wireup
+  $('#btn-spoilage-modal')?.addEventListener('click', () => openSpoilageModal());
+  $('#spoilage-form')?.addEventListener('submit', e => {
+    e.preventDefault();
+    const itemId = Number($('#spoilage-item').value);
+    const qty = Number($('#spoilage-qty').value);
+    const reason = $('#spoilage-reason').value;
+    const date = $('#spoilage-date').value || new Date().toISOString().slice(0, 10);
+    const notes = $('#spoilage-notes').value.trim();
+
+    const ing = inventory.find(i => i.id === itemId);
+    if (!ing || isNaN(qty) || qty <= 0) {
+      notify('Please specify a valid item and quantity.');
+      return;
+    }
+
+    const lossAmount = Math.round(qty * ing.cost * 100) / 100;
+    ing.quantity = Math.max(0, ing.quantity - qty);
+
+    const spoilageEntry = {
+      id: 'SPL-' + Date.now(),
+      date,
+      timestamp: new Date().toISOString(),
+      ingredientId: ing.id,
+      ingredientName: ing.name,
+      qty: Number(qty),
+      unit: ing.unit,
+      unitCost: ing.cost,
+      totalCost: lossAmount,
+      reason: reason || 'Expired Shelf-Life (Unsold)',
+      notes
+    };
+
+    spoilageLedger.unshift(spoilageEntry);
+    saveAll();
+
+    $('#spoilage-dialog')?.close();
+    renderInventory();
+    renderFinance();
+    renderPortalPulse();
+    renderVisualAnalytics();
+    renderExecutiveReport();
+    notify(`Logged spoilage for ${qty} ${ing.unit} of ${ing.name} (-${peso(lossAmount)} loss).`);
+  });
+
   // OpEx Expense Form
   $('#btn-add-expense')?.addEventListener('click', () => {
     $('#opex-form').reset();
@@ -2231,6 +2812,148 @@ function initApp() {
     });
   });
 
+  // Inventory Search & Category Filters
+  $('#inventory-search')?.addEventListener('input', renderInventory);
+  $$('[data-inv-filter]').forEach(chip => {
+    chip.addEventListener('click', () => {
+      activeInventoryFilter = chip.dataset.invFilter;
+      $$('[data-inv-filter]').forEach(c => c.classList.toggle('selected', c === chip));
+      renderInventory();
+    });
+  });
+
+  // Add / Edit Inventory Ingredient Form
+  $('#add-item-button')?.addEventListener('click', () => openIngredientModal());
+  $('#item-form')?.addEventListener('submit', e => {
+    e.preventDefault();
+    const editId = $('#item-edit-id')?.value;
+    const name = $('#new-item-name').value.trim();
+    const category = $('#new-item-category').value;
+    const unit = $('#new-item-unit').value;
+    const cost = Number($('#new-item-cost').value);
+    const qty = Number($('#new-item-qty').value);
+    const par = Number($('#new-item-par').value);
+
+    if (!name || isNaN(cost) || isNaN(qty) || isNaN(par)) return;
+
+    if (editId) {
+      const existing = inventory.find(i => i.id === Number(editId));
+      if (existing) {
+        existing.name = name;
+        existing.category = category;
+        existing.unit = unit;
+        existing.cost = cost;
+        existing.quantity = qty;
+        existing.par = par;
+        notify(`Updated ingredient "${name}".`);
+      }
+    } else {
+      const nextId = inventory.length ? Math.max(...inventory.map(i => i.id)) + 1 : 1;
+      inventory.push({
+        id: nextId,
+        name,
+        category,
+        unit,
+        cost,
+        quantity: qty,
+        par
+      });
+      notify(`Added new ingredient "${name}".`);
+    }
+
+    saveAll();
+    $('#item-dialog').close();
+    renderInventory();
+  });
+
+  // Recipe Builder Form ("＋ Add to Recipe")
+  $('#add-recipe-ingredient-form')?.addEventListener('submit', e => {
+    e.preventDefault();
+    const productId = $('#recipe-product-id').value;
+    const ingId = Number($('#recipe-ing-select').value);
+    const qty = Number($('#recipe-ing-qty').value);
+
+    if (!productId || !ingId || qty <= 0) return;
+
+    const ing = inventory.find(i => i.id === ingId);
+    if (!ing) return;
+
+    if (!recipes[productId]) recipes[productId] = [];
+
+    const existing = recipes[productId].find(r => r.ingredientId === ingId);
+    if (existing) {
+      existing.qty += qty;
+    } else {
+      recipes[productId].push({
+        ingredientId: ingId,
+        qty,
+        unit: ing.unit
+      });
+    }
+
+    saveAll();
+    $('#recipe-ing-qty').value = '';
+    renderRecipeList(productId);
+    renderItems();
+    notify(`Added ${qty} ${ing.unit} of ${ing.name} to recipe.`);
+  });
+
+  // Menu Search
+  $('#items-search')?.addEventListener('input', renderItems);
+
+  // Menu Groups Management
+  function renderMenuGroupsList() {
+    const container = $('#menu-groups-list');
+    if (!container) return;
+
+    container.innerHTML = menuGroups.map((g, idx) => `
+      <div class="pending-ticket-row" style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid #ddd;">
+        <strong>${escapeHTML(g)}</strong>
+        <button type="button" class="restock-btn" data-delete-group="${idx}" style="color:#a53333;">Remove</button>
+      </div>
+    `).join('');
+
+    $$('[data-delete-group]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = Number(btn.dataset.deleteGroup);
+        const removed = menuGroups.splice(idx, 1)[0];
+        saveAll();
+        renderMenuGroupsList();
+        renderItemGroups();
+        renderCategories();
+        notify(`Removed menu group "${removed}".`);
+      });
+    });
+  }
+
+  $('#add-menu-group')?.addEventListener('click', () => {
+    $('#create-group-form')?.reset();
+    $('#create-group-dialog')?.showModal();
+  });
+
+  $('#create-group-form')?.addEventListener('submit', e => {
+    e.preventDefault();
+    const newGroup = $('#new-menu-group-name').value.trim();
+    if (!newGroup) return;
+
+    if (!menuGroups.includes(newGroup)) {
+      menuGroups.push(newGroup);
+      saveAll();
+      renderItemGroups();
+      renderCategories();
+      notify(`Created menu group "${newGroup}".`);
+    } else {
+      notify('Menu group already exists.');
+    }
+    $('#create-group-dialog').close();
+  });
+
+  $('#edit-menu-groups')?.addEventListener('click', () => {
+    renderMenuGroupsList();
+    $('#menu-groups-dialog')?.showModal();
+  });
+  $('#done-menu-groups')?.addEventListener('click', () => $('#menu-groups-dialog')?.close());
+
   // Add Item to Menu & Groups
   $('#add-menu-item')?.addEventListener('click', () => openProductModal());
   $('#menu-item-form')?.addEventListener('submit', e => {
@@ -2267,15 +2990,116 @@ function initApp() {
     notify('Menu item saved.');
   });
 
+  // Promo & Discount Management Wireup
+  $('#btn-add-promo')?.addEventListener('click', () => openPromoModal());
+  $('#promo-search')?.addEventListener('input', () => renderPromos());
+
+  $$('#promo-status-filter [data-promo-filter]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      $$('#promo-status-filter [data-promo-filter]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      activePromoFilter = btn.dataset.promoFilter;
+      renderPromos();
+    });
+  });
+
+  $('#btn-cancel-promo')?.addEventListener('click', () => {
+    const dialog = $('#promo-dialog');
+    if (dialog) {
+      if (typeof dialog.close === 'function') dialog.close();
+      else dialog.removeAttribute('open');
+    }
+  });
+
+  $('#promo-dialog .modal-close')?.addEventListener('click', () => {
+    const dialog = $('#promo-dialog');
+    if (dialog) {
+      if (typeof dialog.close === 'function') dialog.close();
+      else dialog.removeAttribute('open');
+    }
+  });
+
+  $('#promo-form')?.addEventListener('submit', e => {
+    e.preventDefault();
+    const id = $('#promo-id')?.value.trim();
+    const code = $('#promo-code')?.value.trim().toUpperCase();
+    const name = $('#promo-name')?.value.trim();
+    const type = $('#promo-type')?.value;
+    const value = parseFloat($('#promo-value')?.value || '0');
+    const minSpend = parseFloat($('#promo-min-spend')?.value || '0');
+    const maxCap = parseFloat($('#promo-max-cap')?.value || '0');
+    const active = $('#promo-active')?.checked ?? true;
+
+    if (!code || !name || isNaN(value) || value <= 0) {
+      notify('Please enter a valid code, name, and positive discount value.');
+      return;
+    }
+
+    const duplicate = promos.find(p => p.code.toUpperCase() === code && p.id !== id);
+    if (duplicate) {
+      notify(`Promo code "${code}" already exists.`);
+      return;
+    }
+
+    if (id) {
+      const p = promos.find(item => item.id === id);
+      if (p) {
+        p.code = code;
+        p.name = name;
+        p.type = type;
+        p.value = value;
+        p.minSpend = minSpend;
+        p.maxCap = maxCap;
+        p.active = active;
+        notify(`Promo "${code}" updated successfully.`);
+      }
+    } else {
+      const newPromo = {
+        id: 'PRM-' + Date.now().toString(36).toUpperCase(),
+        code,
+        name,
+        type,
+        value,
+        minSpend,
+        maxCap,
+        active
+      };
+      promos.push(newPromo);
+      notify(`Promo "${code}" created successfully.`);
+    }
+
+    saveAll();
+    const dialog = $('#promo-dialog');
+    if (dialog) {
+      if (typeof dialog.close === 'function') dialog.close();
+      else dialog.removeAttribute('open');
+    }
+    renderPromos();
+  });
+
   // Initial Boot
   setAppMode('portal');
   
   renderPortalPulse();
   renderCategories();
   renderProducts();
+
+  // Restore saved active discount UI state if present
+  if (appliedDiscount && appliedDiscount.type && appliedDiscount.type !== 'none') {
+    if ($('#discount-type-select')) $('#discount-type-select').value = appliedDiscount.type;
+    if ($('#id-capture-box')) $('#id-capture-box').hidden = !(appliedDiscount.type === 'pwd' || appliedDiscount.type === 'senior');
+    if ($('#promo-input-box')) $('#promo-input-box').hidden = !(appliedDiscount.type === 'promo');
+    if ($('#promo-code-input') && appliedDiscount.promoCode) $('#promo-code-input').value = appliedDiscount.promoCode;
+    if ($('#senior-pwd-id') && appliedDiscount.idLastDigits) $('#senior-pwd-id').value = appliedDiscount.idLastDigits;
+  }
+  if ($$('.service-option').length) {
+    $$('.service-option').forEach(b => b.classList.toggle('selected', b.dataset.service === activeService));
+  }
+
   renderCart();
   renderItems();
   renderItemGroups();
+  renderPromos();
   renderInventory();
   renderOrders();
   renderFinance();
@@ -2303,6 +3127,24 @@ const LeAugemPOS = {
   calculateProductCOGS,
   deductInventoryForCart,
   restoreInventoryForOrder,
+  recordSpoilageDiscard,
+  getSpoilageLedger: () => spoilageLedger,
+  getEligibleDrinkInCart,
+  DRINK_CATEGORIES,
+  REQUIRED_LOYALTY_STAMPS: 12,
+  redeemFreeDrinkForMember,
+  openRedeemDrinkModal,
+  defaultPromos,
+  getPromos: () => promos,
+  setPromos: (p) => { promos = p; saveAll(); },
+  renderPromos,
+  openPromoModal,
+  saveCartState,
+  getActiveCart: () => activeCart,
+  setActiveCart: (c) => { activeCart = c; saveCartState(); renderCart(); },
+  getActiveLoyaltyMember: () => activeLoyaltyMember,
+  setActiveLoyaltyMember: (m) => { activeLoyaltyMember = m; saveCartState(); updateLoyaltyCustomerDisplay(); },
+  getAppliedDiscount: () => appliedDiscount,
   peso
 };
 
